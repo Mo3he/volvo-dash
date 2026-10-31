@@ -32,6 +32,12 @@ across a trip is the trip's energy, accurate to a few hundredths of a kWh.
 First real trip (31 Oct 2026, 9.8 km): 27.9 x 26.2 = 7.31 kWh before,
 26.2 x 36.0 = 9.43 kWh after, so 2.12 kWh, against 1.6 +/- 0.8 kWh from
 battery percentage.
+Second trip (31 Oct 2026, 10.0 km, no preconditioning): 26.1 x 36.0 = 9.40
+kWh before, 24.0 x 46.0 = 11.04 kWh after, so 1.64 kWh, against 1.63 kWh
+from battery percentage (96% to 94%).
+
+Unlike the trip meters, the average updates about every minute while
+driving, so it could also show live consumption during a trip.
 
 Open questions before relying on it:
 - Use the readings from just before the trip starts: the average already
