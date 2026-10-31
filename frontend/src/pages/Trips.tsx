@@ -101,7 +101,7 @@ function TripDetail({ id }: { id: number }) {
         <div><dt>Duration</dt><dd>{duration(t.ended_at - t.started_at)}</dd></div>
         <div><dt>Average speed</dt><dd>{speed(t.avg_speed_kmh)}</dd></div>
         <div><dt>Battery</dt><dd>{pct(t.soc_start)} → {pct(t.soc_end)}</dd></div>
-        <div><dt>Energy</dt><dd>{kwh(t.energy_kwh)}</dd></div>
+        <div><dt>Energy</dt><dd>{kwh(t.energy_kwh)}{t.energy_source === 'soc' ? ' (from battery %)' : ''}</dd></div>
         <div><dt>Consumption</dt><dd>{t.efficiency ? efficiency(t.efficiency) : 'Too short to measure'}</dd></div>
         <div><dt>Outside</dt><dd>{temp(t.temp_c)}</dd></div>
       </div>

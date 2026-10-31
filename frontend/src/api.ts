@@ -80,6 +80,7 @@ export interface Trip {
   soc_start: number | null
   soc_end: number | null
   energy_kwh: number | null
+  energy_source: 'car' | 'soc' | null
   efficiency: number | null
   avg_speed_kmh: number | null
   start_lat: number | null

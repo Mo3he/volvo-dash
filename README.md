@@ -31,10 +31,6 @@ What it deliberately does not do:
 - **Vampire drain.** The car does not report while it sleeps, so there is
   nothing to measure it with.
 - **Start or stop charging.** Volvo's API has no command for it.
-- **Per-trip consumption on short trips.** The car reports battery level in
-  whole percent (about 0.8 kWh a step), so trips under 5 km or 2% show "too
-  short to measure". Averages use total energy over total distance, where
-  that rounding cancels out.
 
 ## Home Assistant (MQTT)
 
@@ -145,6 +141,16 @@ from that:
 Charging energy is the car's reported power added up over the session when
 there are enough readings, otherwise battery-level rise times battery size.
 Both are stored and shown.
+
+Trip energy comes from the car's own counter: average consumption
+(`averageEnergyConsumption`) times the manual trip meter it is averaged over,
+taken before and after the trip. That is accurate to a few hundredths of a
+kWh even on a 1 km trip, and includes climate use. The average is rounded to
+0.1 kWh/100 km, so precision drops as the manual trip meter grows; past about
+800 km it is worse than battery percent (whole percent, about 0.8 kWh a step),
+and trips fall back to that and say so. **Reset the manual trip meter in the
+car now and then** to keep trip energy exact. A reset mid-trip also falls back
+for that one trip.
 
 ## How a real EX40 reports
 

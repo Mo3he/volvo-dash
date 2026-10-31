@@ -131,6 +131,17 @@ MIGRATIONS = [
     CREATE INDEX raw_responses_endpoint ON raw_responses (endpoint, fetched_at);
     CREATE INDEX raw_responses_fetched ON raw_responses (fetched_at);
     """,
+    """
+    -- The car's own energy counter: average consumption over the manual trip meter.
+    ALTER TABLE observations ADD COLUMN avg_consumption REAL;
+    ALTER TABLE observations ADD COLUMN trip_manual_km REAL;
+    ALTER TABLE trips ADD COLUMN cons_start REAL;
+    ALTER TABLE trips ADD COLUMN cons_end REAL;
+    ALTER TABLE trips ADD COLUMN tm_start REAL;
+    ALTER TABLE trips ADD COLUMN tm_end REAL;
+    ALTER TABLE trips ADD COLUMN energy_soc_kwh REAL;
+    ALTER TABLE trips ADD COLUMN energy_source TEXT;
+    """,
 ]
 
 

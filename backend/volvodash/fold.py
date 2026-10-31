@@ -75,6 +75,10 @@ def fold(prev: Obs, results: dict[str, dict[str, Any]], now: float) -> Obs:
                 o.trip_auto_km, o.stats_ts = km(f), ts
             elif key == "averageSpeedAutomatic":
                 o.avg_speed_auto = km(f)
+            elif key == "averageEnergyConsumption":
+                o.avg_consumption = num(f)
+            elif key == "tripMeterManual":
+                o.trip_manual_km = km(f)
         if res == "energy":
             # Not every car reports power; absent means unknown, not unchanged.
             o.power_w = num(fields["chargingPower"]) if "chargingPower" in fields else None

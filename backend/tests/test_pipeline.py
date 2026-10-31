@@ -43,6 +43,12 @@ def test_trips_match_what_the_car_did(rig, mode):
         points = {(round(p["lat"], 4), round(p["lon"], 4))
                   for p in r.db.q("SELECT lat, lon FROM trip_points")}
         assert points <= parked
+    # The car's own energy counter is exact per trip, short trips included,
+    # until the manual trip meter grows so large that rounding wins.
+    from_car = [(t, real) for t, real in zip(trips, truth) if t["energy_source"] == "car"]
+    assert len(from_car) >= 10
+    for trip, real in from_car:
+        assert trip["energy_kwh"] == pytest.approx(real["kwh"], abs=0.1 + 0.001 * trip["tm_end"])
     total = sum(t["distance_km"] for t in trips)
     assert total == pytest.approx(sum(d["km"] for d in truth), rel=0.005)
     # Whole-percent SoC makes single trips noisy, but the totals must agree.
@@ -189,3 +195,20 @@ def test_raw_log_does_not_repeat_after_restart_or_reordering(rig):
     fresh = RawLog(r.db)  # as after a restart
     fresh.record(r.clock.now(), "GET", row["endpoint"], 200, reordered)
     assert r.db.one("SELECT COUNT(*) c FROM raw_responses")["c"] == before
+
+
+def test_car_energy_counter_and_when_not_to_trust_it():
+    from volvodash.detect import car_energy
+
+    def trip(c0, m0, c1, m1):
+        return {"cons_start": c0, "tm_start": m0, "cons_end": c1, "tm_end": m1}
+
+    # Real second trip, 31 Oct 2026: 1.64 kWh where battery percent said 1.63.
+    assert car_energy(trip(26.1, 36.0, 24.0, 46.0), 9.9, 81.6) == pytest.approx(1.644)
+    # Meter reset during the trip, or it disagrees with the distance driven.
+    assert car_energy(trip(26.1, 36.0, 20.0, 4.0), 4.0, 81.6) is None
+    assert car_energy(trip(26.1, 36.0, 26.1, 36.0), 9.9, 81.6) is None
+    assert car_energy(trip(None, None, 24.0, 46.0), 9.9, 81.6) is None
+    # At thousands of km, 0.1 kWh/100 km rounding is worse than one battery percent.
+    assert car_energy(trip(18.0, 900.0, 18.0, 910.0), 10.0, 81.6) is None
+    assert car_energy(trip(18.0, 600.0, 18.0, 610.0), 10.0, 81.6) == pytest.approx(1.8)

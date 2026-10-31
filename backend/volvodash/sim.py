@@ -58,6 +58,9 @@ class SimCar:
         self.odo = 1482.3
         self.ta = 12.4
         self.ta_seconds = 1100.0
+        # Manual trip meter and the energy the car counted over it.
+        self.tm = 26.2
+        self.tm_kwh = 26.2 * 27.5 / 100
         self.where = "home"
         self.lat, self.lon = SPOTS["home"][1:]
         self.loc_ts = start
@@ -202,6 +205,8 @@ class SimCar:
         self.odo += km
         self.ta += km
         self.ta_seconds += dt
+        self.tm += km
+        self.tm_kwh += km * d["consumption"] / 100
         self.soc = max(self.soc - km * d["consumption"] / 100 / CAPACITY_KWH * 100, 1.0)
         f = d["done"] / d["km"]
         (lat0, lon0), (lat1, lon1) = d["from"], d["dest"]
@@ -306,7 +311,8 @@ class SimCar:
             },
             "odometer": {"odometer": f(int(self.odo), "km")},
             "statistics": {
-                "averageEnergyConsumption": f(17.9, "kWh/100km"),
+                "averageEnergyConsumption": f(round(self.tm_kwh / self.tm * 100, 1), "kWh/100km"),
+                "tripMeterManual": f(round(self.tm, 1), "km"),
                 "averageSpeedAutomatic": f(
                     round(self.ta / (self.ta_seconds / 3600)) if self.ta_seconds > 60 else 0,
                     "km/h"),

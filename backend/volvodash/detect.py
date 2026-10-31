@@ -57,6 +57,8 @@ class Obs:
     lat: float | None = None
     lon: float | None = None
     location_ts: float | None = None
+    avg_consumption: float | None = None  # kWh/100 km over the manual trip meter
+    trip_manual_km: float | None = None
 
     def same_data(self, other: "Obs") -> bool:
         a, b = asdict(self), asdict(other)
@@ -97,6 +99,26 @@ def integrate_power(samples: list[tuple[float, float | None]]) -> tuple[float, f
             kwh += (w0 + w1) / 2 * dt / 3_600_000
             covered += dt
     return kwh, covered
+
+
+def car_energy(r: Any, distance: float, capacity_kwh: float) -> float | None:
+    """Trip energy from the car's own counter, or None when it can't be trusted.
+
+    Average consumption times the manual trip meter is the energy the car
+    measured since that meter was reset; its change across a trip is the trip.
+    The average has only 0.1 kWh/100 km resolution, so the error grows with the
+    meter reading. Use it only while it beats one percent of battery.
+    """
+    c0, c1, m0, m1 = r["cons_start"], r["cons_end"], r["tm_start"], r["tm_end"]
+    if None in (c0, c1, m0, m1):
+        return None
+    # The meter must have counted this trip: not reset, and agreeing on distance.
+    if m1 < m0 or abs((m1 - m0) - distance) > 1.5:
+        return None
+    error = 0.05 * (m0 + m1) / 100 + 0.1 * c1 / 100
+    if error > capacity_kwh / 100:
+        return None
+    return max(c1 * m1 - c0 * m0, 0) / 100
 
 
 class Detector:
@@ -146,6 +168,8 @@ class Detector:
                 "odo": o.odometer_km,
                 "soc": o.soc,
                 "ta": o.trip_auto_km,
+                "cons": o.avg_consumption,
+                "tm": o.trip_manual_km,
                 "lat": o.lat,
                 "lon": o.lon,
             }
@@ -196,6 +220,7 @@ class Detector:
 
         self.db.update("trips", trip["id"], {
             "odo_end": o.odometer_km, "soc_end": o.soc, "ta_end": o.trip_auto_km,
+            "cons_end": o.avg_consumption, "tm_end": o.trip_manual_km,
         })
         self._trip_point(trip["id"], o)
 
@@ -244,6 +269,7 @@ class Detector:
                 "odo_start": park.get("odo", o.odometer_km),
                 "soc_start": park.get("soc") if park.get("soc") is not None else o.soc,
                 "ta_start": park.get("ta"),
+                "cons_start": park.get("cons"), "tm_start": park.get("tm"),
                 "start_lat": park.get("lat"), "start_lon": park.get("lon"),
             })
             if park.get("lat") is not None:
@@ -334,18 +360,26 @@ class Detector:
             r["soc_start"] - r["soc_end"]
             if r["soc_start"] is not None and r["soc_end"] is not None else None
         )
-        energy = max(used_pct, 0) / 100 * self.capacity() if used_pct is not None else None
-        # SoC is reported in whole percent; short trips can't give a usable efficiency.
-        efficiency = (
-            energy / distance * 100
-            if energy is not None and distance >= 5 and used_pct >= 2 else None
-        )
+        from_soc = max(used_pct, 0) / 100 * self.capacity() if used_pct is not None else None
+        from_car = car_energy(r, distance, self.capacity())
+        if from_car is not None:
+            energy, source = from_car, "car"
+            efficiency = energy / distance * 100 if distance >= 1 else None
+        else:
+            energy, source = from_soc, "soc" if from_soc is not None else None
+            # SoC is reported in whole percent; short trips can't give a usable efficiency.
+            efficiency = (
+                energy / distance * 100
+                if energy is not None and distance >= 5 and used_pct >= 2 else None
+            )
         hours = (ended - started) / 3600
         values = {
             "started_at": started,
             "start_estimated": estimated,
             "distance_km": round(distance, 1),
             "energy_kwh": round(energy, 2) if energy is not None else None,
+            "energy_soc_kwh": round(from_soc, 2) if from_soc is not None else None,
+            "energy_source": source,
             "efficiency": round(efficiency, 1) if efficiency is not None else None,
             "avg_speed_kmh": round(distance / hours, 1) if hours > 1 / 60 else None,
         }
@@ -366,11 +400,16 @@ class Detector:
         changed = (
             (o.lat, o.lon) != (prev.lat, prev.lon)
             or o.trip_auto_km != prev.trip_auto_km
+            or o.trip_manual_km != prev.trip_manual_km
+            or o.avg_consumption != prev.avg_consumption
             or (o.soc != prev.soc and o.charging_status != "CHARGING")
         )
         if not changed:
             return
-        values: dict[str, Any] = {"odo_end": o.odometer_km, "ta_end": o.trip_auto_km}
+        values: dict[str, Any] = {
+            "odo_end": o.odometer_km, "ta_end": o.trip_auto_km,
+            "cons_end": o.avg_consumption, "tm_end": o.trip_manual_km,
+        }
         if o.charging_status != "CHARGING" and not last.get("charged"):
             values["soc_end"] = o.soc
         last["speed_hint"] = o.avg_speed_auto
