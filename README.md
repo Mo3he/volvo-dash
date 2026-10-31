@@ -59,30 +59,26 @@ Unlock is deliberately not available over MQTT.
 
 ## Run it
 
-With Docker, no clone needed:
+With Docker, building from this repository:
 
 ```sh
-mkdir volvo-dash && cd volvo-dash
-curl -O https://raw.githubusercontent.com/Mo3he/volvo-dash/main/docker-compose.yml
-docker compose up -d
+git clone https://github.com/Mo3he/volvo-dash.git && cd volvo-dash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 Then open http://localhost:8000. On first visit you choose a dashboard
-password. The image is built for amd64 and arm64 (Raspberry Pi 4/5) and
-published to `ghcr.io/mo3he/volvo-dash` on every push to `main`, after the
-tests pass. To update: `docker compose pull && docker compose up -d`.
+password. To update: `git pull`, then the same command again.
+
+> A prebuilt image (`ghcr.io/mo3he/volvo-dash`, amd64 and arm64) is set up
+> to publish from GitHub Actions but has not been published yet. Once it is,
+> `docker-compose.yml` on its own will be enough: download it and run
+> `docker compose up -d`.
 
 From source (Python 3.11+ and Node 20+):
 
 ```sh
 ./dev.sh sim    # simulated car with a month of history, no account needed
 ./dev.sh        # the real thing
-```
-
-To build the image yourself instead of pulling it:
-
-```sh
-docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 To deploy a checkout to another machine over SSH, put `DEPLOY_HOST=user@host`
