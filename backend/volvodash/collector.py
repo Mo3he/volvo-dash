@@ -211,6 +211,9 @@ class Collector:
             else:
                 results[res] = answer
         self.status["last_error"] = "; ".join(errors) or None
+        unavailable = self.db.get("volvo_unavailable", [])
+        if set(unavailable) & set(results):
+            self.db.set("volvo_unavailable", [r for r in unavailable if r not in results])
         return results
 
     def _merge(self, results: dict[str, dict[str, Any]], now: float) -> Obs:

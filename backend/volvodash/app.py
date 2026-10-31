@@ -767,6 +767,10 @@ async def _finish_sign_in() -> None:
         if len(vins) > 1:
             return  # the owner picks one in Settings
         await _select_vehicle(vins[0])
+    # A new sign-in may grant scopes the last one lacked: ask for everything again now.
+    ctx.db.delete("volvo_unavailable")
+    ctx.collector.off.clear()
+    ctx.collector.due.clear()
     ctx.collector.wake()
 
 
