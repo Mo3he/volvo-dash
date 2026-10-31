@@ -40,6 +40,7 @@ function Volvo({ status }: { status: Status }) {
   const [form, setForm] = useState({ api_key: '', client_id: '', client_secret: '', redirect_uri: '' })
   const [pasted, setPasted] = useState('')
   const [editing, setEditing] = useState(false)
+  const [awaiting, setAwaiting] = useState(false)
   const { busy, run, note } = useAction()
   const params = new URLSearchParams(window.location.search)
   const callbackError = params.get('volvo_error')
@@ -63,12 +64,38 @@ function Volvo({ status }: { status: Status }) {
     )
   }
 
-  const signIn = () =>
+  // Volvo's sign-in opens in a new tab so this page stays here to paste the
+  // address back into. The tab is opened before any await, or the browser
+  // treats it as an unwanted pop-up.
+  const signIn = () => {
+    const tab = window.open('', '_blank')
     run(async () => {
-      await api('/volvo/credentials', 'PUT', form)
-      const { url } = await api<{ url: string }>('/volvo/authorize', 'POST')
-      window.location.href = url
+      try {
+        await api('/volvo/credentials', 'PUT', form)
+        const { url } = await api<{ url: string }>('/volvo/authorize', 'POST')
+        if (tab) tab.location.href = url
+        else window.location.href = url
+        setAwaiting(true)
+      } catch (e) {
+        tab?.close()
+        throw e
+      }
     })
+  }
+
+  const pasteBox = (
+    <div className="stack">
+      <p className="hint">
+        After signing in, Volvo sends you to an address that may not load. Copy the whole address from that tab’s address bar and paste it here.
+      </p>
+      <div className="row">
+        <input type="text" className="grow" value={pasted} placeholder="https://…?code=…&state=…" onChange={(e) => setPasted(e.target.value)} aria-label="Address Volvo redirected to" />
+        <button className="btn" disabled={busy || !pasted} onClick={() => run(async () => { await api('/volvo/exchange', 'POST', { url: pasted }); setPasted(''); setEditing(false); setAwaiting(false); reload(); return 'Connected.' })}>
+          Finish sign-in
+        </button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="card stack">
@@ -111,6 +138,7 @@ function Volvo({ status }: { status: Status }) {
             </button>
             {note}
           </div>
+          {awaiting && pasteBox}
         </>
       ) : (
         <>
@@ -153,18 +181,12 @@ function Volvo({ status }: { status: Status }) {
             {editing && <button className="btn" onClick={() => setEditing(false)}>Cancel</button>}
             {note}
           </div>
-          <details>
-            <summary>Signed in, but landed on a page that would not load?</summary>
-            <div className="stack" style={{ marginTop: 10 }}>
-              <p className="hint">Copy the whole address from the browser’s address bar on that page and paste it here.</p>
-              <div className="row">
-                <input type="text" className="grow" value={pasted} placeholder="https://…?code=…&state=…" onChange={(e) => setPasted(e.target.value)} aria-label="Address Volvo redirected to" />
-                <button className="btn" disabled={busy || !pasted} onClick={() => run(async () => { await api('/volvo/exchange', 'POST', { url: pasted }); setPasted(''); setEditing(false); reload(); return 'Connected.' })}>
-                  Finish sign-in
-                </button>
-              </div>
-            </div>
-          </details>
+          {awaiting ? pasteBox : (
+            <details>
+              <summary>Signed in, but landed on a page that would not load?</summary>
+              <div style={{ marginTop: 10 }}>{pasteBox}</div>
+            </details>
+          )}
         </>
       )}
 
