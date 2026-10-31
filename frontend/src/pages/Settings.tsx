@@ -138,7 +138,12 @@ function Volvo({ status }: { status: Status }) {
             </button>
             {note}
           </div>
-          {awaiting && pasteBox}
+          {awaiting ? pasteBox : (
+            <details>
+              <summary>Have the address from Volvo’s sign-in? Paste it here</summary>
+              <div style={{ marginTop: 10 }}>{pasteBox}</div>
+            </details>
+          )}
         </>
       ) : (
         <>
