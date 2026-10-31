@@ -77,7 +77,7 @@ password. To update: `git pull`, then the same command again.
 From source (Python 3.11+ and Node 20+):
 
 ```sh
-./dev.sh sim    # simulated car with a month of history, no account needed
+./dev.sh sim    # simulated EX40 with a month of history, no account needed
 ./dev.sh        # the real thing
 ```
 
@@ -146,28 +146,25 @@ Charging energy is the car's reported power added up over the session when
 there are enough readings, otherwise battery-level rise times battery size.
 Both are stored and shown.
 
-## First week with the real car
+## How a real EX40 reports
 
-The simulator covers two ways the car might behave: reporting every minute
-while in use (`VOLVODASH_SIM=live`), or only when something ends
-(`VOLVODASH_SIM=sparse`). Which one the EX40 actually does, I don't know yet.
-Things to check once it is connected:
+Seen on a 2027 EX40 in October 2026:
 
-- Do trips appear with the right start and end times? A `~` before the start
-  time means the car only reported after the trip, and the start is an estimate.
-- Do trip maps show a route, or only start and end? That depends on whether
-  the car reports position while moving.
-- Does a charging session show a power curve and "from charging power"
-  energy? If not, the car reports power too rarely and energy falls back to
-  the battery-level estimate.
-- Is "Usable battery" right? Volvo may report gross capacity. Set the usable
-  figure in Settings, then Rebuild.
-- If Volvo's charging power turns out to be measured at the wall, "from
-  charging power" will be about 10% above "from battery level" on AC. That
-  is charging loss, and the wall figure is the right one for cost.
+- **Driving.** "Car on" (engine running, car in use) and the battery level
+  update about once a minute. Odometer, trip meters and **position stay
+  frozen until the car is switched off**, then jump to the new values. Trips
+  get exact start and end times, but maps show only start and end, never a
+  route.
+- **Charging.** Status, battery level and power arrive every few minutes,
+  sometimes 10 to 20 minutes apart. Power held within 10% is added up across
+  such gaps, which measured an overnight 2.7 kW session at the full 51 kWh.
+- **Preconditioning** is not visible: the engine stays "stopped".
+- **Fuel endpoint.** Also reports battery level, with its own timestamps.
+- **Sign-in.** Access tokens last 5 minutes; refresh tokens are single-use.
 
-If detection gets something wrong, the raw log still has it: fix the rule in
-`detect.py`, add a case to the tests, and Rebuild.
+The simulator's default `ex40` mode reproduces this; `live` and `sparse`
+cover cars that report more or less often. If something looks wrong, the raw
+log still has everything: fix the rule in `detect.py`, add a test, Rebuild.
 
 ## Development
 
@@ -179,7 +176,7 @@ cd frontend && npm run dev         # hot reload on :5173, proxies /api to :8000
 | Variable | Meaning |
 |---|---|
 | `VOLVODASH_DATA` | Data directory (default `./data`) |
-| `VOLVODASH_SIM` | `live` or `sparse`: run against the simulator, in a separate `sim.db` |
+| `VOLVODASH_SIM` | `ex40`, `live` or `sparse`: run against the simulator, in a separate `sim.db` |
 | `VOLVODASH_SIM_DAYS` | Days of history to simulate at startup (default 30) |
 | `VOLVODASH_SIM_SPEED` | How much faster than real time the simulator runs (default 20) |
 | `VOLVODASH_NO_AUTH` | `1` disables the dashboard password. Local use only |

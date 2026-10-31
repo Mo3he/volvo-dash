@@ -4,9 +4,12 @@ The simulator answers the same URLs with the same JSON shapes as Volvo's real
 API, so the whole pipeline (HTTP client, collector, detector) runs unchanged
 against it. It exists so the app can be developed and tested without a car.
 
-Two reporting modes cover the two ways a real car might behave:
-  live    the car reports about once a minute while driving or charging
-  sparse  the car reports only when something ends (parked, plugged, done)
+Reporting modes:
+  ex40    what a real 2027 EX40 does (seen Oct 2026): "car on" and battery
+          level about once a minute while driving, but odometer, trip meter
+          and position stay frozen until it is switched off
+  live    everything about once a minute while driving or charging
+  sparse  reports only when something ends (parked, plugged, done)
 """
 
 import asyncio
@@ -76,6 +79,7 @@ class SimCar:
         self.revoked = False
         # What really happened, for tests to compare the detector against.
         self.truth: dict[str, list[dict[str, Any]]] = {"drives": [], "charges": []}
+        self.frozen: dict[str, Any] | None = None
         self.rep: dict[str, Any] = {}
         self._report()
 
@@ -133,9 +137,9 @@ class SimCar:
         else:
             self._parked_step()
         busy = self.drive or self.charge
-        every = 60 if self.mode == "live" else 900
+        every = 900 if self.mode == "sparse" else 60
         if busy and self.t - self.last_report >= every:
-            if self.mode == "live" or self.charge:
+            if self.mode != "sparse" or self.charge:
                 self._report()
 
     def _parked_step(self) -> None:
@@ -187,7 +191,7 @@ class SimCar:
         }
         self.engine, self.engine_ts = "RUNNING", self.t
         self.locked = False
-        if self.mode == "live":
+        if self.mode != "sparse":
             self._report()
 
     def _drive_step(self, dt: float) -> None:
@@ -337,6 +341,18 @@ class SimCar:
                 "washerFluidLevelWarning": ok,
             },
         }
+        self._freeze_while_driving()
+
+    def _freeze_while_driving(self) -> None:
+        """EX40: odometer, trip statistics and position only move at switch-off."""
+        if self.mode != "ex40":
+            return
+        if not self.drive:
+            self.frozen = None
+        elif self.frozen is None:
+            self.frozen = {k: self.rep[k] for k in ("odometer", "statistics", "location")}
+        else:
+            self.rep.update(self.frozen)
 
     # -- HTTP --------------------------------------------------------------
 

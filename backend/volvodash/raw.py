@@ -31,11 +31,16 @@ class RawLog:
     def record(self, fetched_at: float, method: str, endpoint: str, status: int, body: str) -> None:
         if self._last is None:
             self._last = {
-                r["endpoint"]: r["hash"] for r in self.db.q(
-                    "SELECT endpoint, hash FROM raw_responses WHERE id IN "
-                    "(SELECT MAX(id) FROM raw_responses GROUP BY endpoint)")
+                f"{r['method']} {r['endpoint']}": r["hash"] for r in self.db.q(
+                    "SELECT method, endpoint, hash FROM raw_responses WHERE id IN "
+                    "(SELECT MAX(id) FROM raw_responses GROUP BY method, endpoint)")
             }
-        digest = hashlib.sha1(f"{method} {status} {body}".encode()).hexdigest()
+        # Volvo does not always list fields in the same order; compare content.
+        try:
+            canonical = json.dumps(json.loads(body), sort_keys=True)
+        except ValueError:
+            canonical = body
+        digest = hashlib.sha1(f"{method} {status} {canonical}".encode()).hexdigest()
         key = f"{method} {endpoint}"
         if self._last.get(key) == digest:
             return

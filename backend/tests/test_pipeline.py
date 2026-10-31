@@ -3,7 +3,7 @@
 import pytest
 
 from volvodash.detect import rebuild
-from volvodash.sim import CAPACITY_KWH
+from volvodash.sim import CAPACITY_KWH, SPOTS
 
 
 def merged_truth(drives, gap):
@@ -18,18 +18,18 @@ def merged_truth(drives, gap):
     return out
 
 
-@pytest.mark.parametrize("mode", ["live", "sparse"])
+@pytest.mark.parametrize("mode", ["ex40", "live", "sparse"])
 def test_trips_match_what_the_car_did(rig, mode):
     r = rig(mode)
     r.run(14)
-    truth = [d for d in merged_truth(r.car.truth["drives"], 300 if mode == "live" else 0)]
+    truth = [d for d in merged_truth(r.car.truth["drives"], 0 if mode == "sparse" else 300)]
     trips = r.trips()
     assert len(truth) > 20
     assert len(trips) == len(truth)
     for trip, real in zip(trips, truth):
         assert trip["distance_km"] == pytest.approx(real["km"], abs=0.25)
         assert abs(trip["ended_at"] - real["end"]) <= 90
-        if mode == "live":
+        if mode != "sparse":
             assert abs(trip["started_at"] - real["start"]) <= 90
             assert trip["start_estimated"] == 0
         else:
@@ -37,6 +37,12 @@ def test_trips_match_what_the_car_did(rig, mode):
             # speed. It must be flagged as one and land in the right region.
             assert trip["start_estimated"] == 1
             assert abs(trip["started_at"] - real["start"]) <= 0.6 * (real["end"] - real["start"]) + 120
+    if mode == "ex40":
+        # No position while moving: every map point is a place the car parked.
+        parked = {(round(lat, 4), round(lon, 4)) for _, lat, lon in SPOTS.values()}
+        points = {(round(p["lat"], 4), round(p["lon"], 4))
+                  for p in r.db.q("SELECT lat, lon FROM trip_points")}
+        assert points <= parked
     total = sum(t["distance_km"] for t in trips)
     assert total == pytest.approx(sum(d["km"] for d in truth), rel=0.005)
     # Whole-percent SoC makes single trips noisy, but the totals must agree.
@@ -44,7 +50,7 @@ def test_trips_match_what_the_car_did(rig, mode):
     assert energy == pytest.approx(sum(d["kwh"] for d in truth), rel=0.06)
 
 
-@pytest.mark.parametrize("mode", ["live", "sparse"])
+@pytest.mark.parametrize("mode", ["ex40", "live", "sparse"])
 def test_charges_match_what_the_car_did(rig, mode):
     r = rig(mode)
     r.run(14)
@@ -55,14 +61,14 @@ def test_charges_match_what_the_car_did(rig, mode):
     assert len(charges) == len(truth)
     for charge, real in zip(charges, truth):
         assert charge["charge_type"] == real["type"]
-        slack = 120 if mode == "live" else 960
+        slack = 960 if mode == "sparse" else 120
         assert abs(charge["started_at"] - real["start"]) <= slack
         assert abs(charge["ended_at"] - real["end"]) <= slack
         assert charge["soc_end"] == pytest.approx(real["soc_end"], abs=1)
         assert charge["soc_start"] == pytest.approx(real["soc_start"], abs=1.5)
         added = (real["soc_end"] - real["soc_start"]) / 100 * CAPACITY_KWH
         assert charge["energy_soc_kwh"] == pytest.approx(added, abs=1.6)
-        if mode == "live" or real["type"] == "AC":
+        if mode != "sparse" or real["type"] == "AC":
             # Minute-by-minute power, or steady AC power reported every 15 min:
             # adding it up gives what came out of the charger.
             assert charge["energy_source"] == "metered"
@@ -167,3 +173,19 @@ def test_raw_log_skips_repeats(rig):
     assert stored < calls / 2
     size = r.db.one("SELECT SUM(LENGTH(body)) s FROM raw_responses")["s"]
     print(f"\nraw log: {stored} of {calls} answers kept, {size / 3 / 1024:.0f} KiB per day")
+
+
+def test_raw_log_does_not_repeat_after_restart_or_reordering(rig):
+    from volvodash.raw import RawLog
+
+    r = rig("ex40")
+    r.run(0.2)
+    before = r.db.one("SELECT COUNT(*) c FROM raw_responses")["c"]
+    row = r.db.one("SELECT endpoint, body FROM raw_responses WHERE endpoint LIKE '%/odometer' "
+                   "ORDER BY id DESC LIMIT 1")
+    import json, zlib
+    body = json.loads(zlib.decompress(row["body"]))
+    reordered = json.dumps(dict(reversed(list(body.items()))), indent=2)
+    fresh = RawLog(r.db)  # as after a restart
+    fresh.record(r.clock.now(), "GET", row["endpoint"], 200, reordered)
+    assert r.db.one("SELECT COUNT(*) c FROM raw_responses")["c"] == before

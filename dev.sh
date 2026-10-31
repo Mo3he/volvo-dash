@@ -15,7 +15,7 @@ fi
 (cd frontend && npm run build)
 
 if [ "$1" = "sim" ]; then
-  export VOLVODASH_SIM="${VOLVODASH_SIM:-live}" VOLVODASH_NO_AUTH=1
+  export VOLVODASH_SIM="${VOLVODASH_SIM:-ex40}" VOLVODASH_NO_AUTH=1
 fi
 export VOLVODASH_DATA="${VOLVODASH_DATA:-$PWD/data}"
 echo "Volvo Dash on http://localhost:${PORT:-8000}"
