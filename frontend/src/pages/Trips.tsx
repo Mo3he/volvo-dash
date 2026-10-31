@@ -1,0 +1,135 @@
+import { useMemo, useState } from 'react'
+import { api, useLive, type Trip } from '../api'
+import { Empty, MapView, Tile, split, usePeriod } from '../components'
+import { day, dayKey, dist, duration, efficiency, kwh, pct, speed, temp, time } from '../format'
+
+const place = (name: string | null) => name || 'Unknown place'
+
+function route(t: Trip): string {
+  if (t.start_place && t.start_place === t.end_place) return `${t.start_place}, round trip`
+  return `${place(t.start_place)} → ${place(t.end_place)}`
+}
+
+export function Trips() {
+  const { query, picker } = usePeriod()
+  const { data: trips } = useLive<Trip[]>(`/trips${query}`)
+  const { data: stats } = useLive<any>(`/stats${query}`)
+  const [open, setOpen] = useState<number | null>(null)
+
+  const days = useMemo(() => {
+    const groups: { key: string; trips: Trip[] }[] = []
+    for (const t of trips ?? []) {
+      const key = dayKey(t.started_at)
+      if (groups.at(-1)?.key === key) groups.at(-1)!.trips.push(t)
+      else groups.push({ key, trips: [t] })
+    }
+    return groups
+  }, [trips])
+
+  const totals = stats?.totals
+  const d = split(dist(totals?.distance_km, 0))
+  const e = split(kwh(totals?.used_kwh, 0))
+  const eff = split(efficiency(totals?.efficiency))
+
+  return (
+    <>
+      <div className="page-head">
+        <h1>Trips</h1>
+        <div className="row">
+          {picker}
+          <a className="btn" href={`/api/export/trips.csv${query}`}>Export CSV</a>
+        </div>
+      </div>
+
+      <div className="grid tiles">
+        <Tile label="Distance" value={d.value} unit={d.unit} sub={`${totals?.trips ?? 0} trips`} />
+        <Tile label="Energy used" value={e.value} unit={e.unit} sub={duration(totals?.drive_seconds) + ' driving'} />
+        <Tile label="Average consumption" value={eff.value} unit={eff.unit} sub="Total energy over total distance" />
+      </div>
+
+      <div className="card">
+        {!trips ? null : !trips.length ? (
+          <Empty>No trips in this period.</Empty>
+        ) : (
+          <div className="list">
+            {days.map((g) => (
+              <div key={g.key}>
+                <div className="day">
+                  <span>{day(g.trips[0].started_at)}</span>
+                  <span className="nums">{dist(g.trips.reduce((sum, t) => sum + t.distance_km, 0))}</span>
+                </div>
+                {g.trips.map((t) => (
+                  <div className="item" key={t.id}>
+                    <button className="item-row" aria-expanded={open === t.id} onClick={() => setOpen(open === t.id ? null : t.id)}>
+                      <span className="when nums soft">
+                        {t.start_estimated ? '~' : ''}{time(t.started_at)} – {time(t.ended_at)}
+                      </span>
+                      <span className="title">{route(t)}</span>
+                      <span className="right nums"><strong>{dist(t.distance_km)}</strong></span>
+                      <span className="right nums soft hide-s">{duration(t.ended_at - t.started_at)}</span>
+                      <span className="right nums soft hide-s">{kwh(t.energy_kwh)}</span>
+                    </button>
+                    {open === t.id && <TripDetail id={t.id} />}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+function TripDetail({ id }: { id: number }) {
+  const { data: t, reload } = useLive<Trip>(`/trips/${id}`)
+  const [note, setNote] = useState<string | null>(null)
+  if (!t) return null
+
+  const points = t.points ?? []
+  const path = points.map((p) => [p.lat, p.lon] as [number, number])
+  const markers = []
+  if (t.start_lat != null && t.start_lon != null) markers.push({ at: [t.start_lat, t.start_lon] as [number, number], label: `Start: ${place(t.start_place)}` })
+  if (t.end_lat != null && t.end_lon != null) markers.push({ at: [t.end_lat, t.end_lon] as [number, number], label: `End: ${place(t.end_place)}`, end: true })
+  const sparse = points.length <= 2
+  const text = note ?? t.note ?? ''
+
+  return (
+    <div className="item-body">
+      <div className="facts">
+        <div><dt>Distance</dt><dd>{dist(t.distance_km)}</dd></div>
+        <div><dt>Duration</dt><dd>{duration(t.ended_at - t.started_at)}</dd></div>
+        <div><dt>Average speed</dt><dd>{speed(t.avg_speed_kmh)}</dd></div>
+        <div><dt>Battery</dt><dd>{pct(t.soc_start)} → {pct(t.soc_end)}</dd></div>
+        <div><dt>Energy</dt><dd>{kwh(t.energy_kwh)}</dd></div>
+        <div><dt>Consumption</dt><dd>{t.efficiency ? efficiency(t.efficiency) : 'Too short to measure'}</dd></div>
+        <div><dt>Outside</dt><dd>{temp(t.temp_c)}</dd></div>
+      </div>
+      {t.start_estimated ? (
+        <p className="hint">
+          The car only reported this trip after it ended, so the start time is estimated from distance and average speed.
+        </p>
+      ) : null}
+      {markers.length > 0 && <MapView path={path} markers={markers} dashed={sparse} />}
+      {markers.length > 0 && sparse && (
+        <p className="hint">The car did not report its position along the way, so only the start and end are shown.</p>
+      )}
+      <div className="row">
+        <input
+          type="text" className="grow" placeholder="Add a note" value={text} aria-label="Note"
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <button
+          className="btn" disabled={note === null || note === (t.note ?? '')}
+          onClick={async () => {
+            await api(`/trips/${id}`, 'PATCH', { note })
+            setNote(null)
+            reload()
+          }}
+        >
+          Save note
+        </button>
+      </div>
+    </div>
+  )
+}

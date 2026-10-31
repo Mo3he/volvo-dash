@@ -1,0 +1,17 @@
+# Runtime data: the database holds Volvo credentials and location history.
+/data*/
+*.db
+*.db-wal
+*.db-shm
+# Local deploy target
+deploy.env
+.env
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+node_modules/
+frontend/dist/
+.DS_Store
