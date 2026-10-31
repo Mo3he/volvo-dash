@@ -14,5 +14,5 @@ rsync -az --delete \
   --exclude __pycache__ --exclude '*.egg-info' --exclude .pytest_cache \
   --exclude .git --exclude deploy.env \
   ./ "$HOST:$DIR/"
-ssh "$HOST" "cd $DIR && docker compose up -d --build && docker image prune -f >/dev/null"
+ssh "$HOST" "cd $DIR && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build && docker image prune -f >/dev/null"
 echo "Deployed to http://${HOST#*@}:8000"

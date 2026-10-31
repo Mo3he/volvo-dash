@@ -59,24 +59,35 @@ Unlock is deliberately not available over MQTT.
 
 ## Run it
 
-Needs Python 3.11+ and Node 20+.
+With Docker, no clone needed:
+
+```sh
+mkdir volvo-dash && cd volvo-dash
+curl -O https://raw.githubusercontent.com/Mo3he/volvo-dash/main/docker-compose.yml
+docker compose up -d
+```
+
+Then open http://localhost:8000. On first visit you choose a dashboard
+password. The image is built for amd64 and arm64 (Raspberry Pi 4/5) and
+published to `ghcr.io/mo3he/volvo-dash` on every push to `main`, after the
+tests pass. To update: `docker compose pull && docker compose up -d`.
+
+From source (Python 3.11+ and Node 20+):
 
 ```sh
 ./dev.sh sim    # simulated car with a month of history, no account needed
 ./dev.sh        # the real thing
 ```
 
-Then open http://localhost:8000. On first visit you choose a dashboard password.
-
-With Docker:
+To build the image yourself instead of pulling it:
 
 ```sh
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-To deploy to another machine over SSH, put `DEPLOY_HOST=user@host` in a
-`deploy.env` file (git-ignored) and run `./deploy.sh`. It copies the code and
-rebuilds the container there; the data folder on that machine is never touched.
+To deploy a checkout to another machine over SSH, put `DEPLOY_HOST=user@host`
+in a `deploy.env` file (git-ignored) and run `./deploy.sh`. It copies the code
+and builds there; the data folder on that machine is never touched.
 
 All data lives in one SQLite file, `data/volvodash.db`. Back that up and you
 have everything. It contains your API credentials and location history.
