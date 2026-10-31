@@ -62,11 +62,13 @@ def test_charges_match_what_the_car_did(rig, mode):
         assert charge["soc_start"] == pytest.approx(real["soc_start"], abs=1.5)
         added = (real["soc_end"] - real["soc_start"]) / 100 * CAPACITY_KWH
         assert charge["energy_soc_kwh"] == pytest.approx(added, abs=1.6)
-        if mode == "live":
+        if mode == "live" or real["type"] == "AC":
+            # Minute-by-minute power, or steady AC power reported every 15 min:
+            # adding it up gives what came out of the charger.
             assert charge["energy_source"] == "metered"
             assert charge["energy_kwh"] == pytest.approx(real["wall_kwh"], rel=0.03)
         else:
-            # 15-minute samples are too coarse to integrate; fall back to SoC.
+            # DC power falls steeply; 15-minute samples are too coarse to add up.
             assert charge["energy_source"] == "soc"
 
 

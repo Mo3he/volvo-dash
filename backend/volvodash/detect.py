@@ -23,8 +23,12 @@ IDLE_CLOSE_S = 600
 CHARGE_RESUME_S = 1800
 # After a trip closes, late odometer/location/SoC reports still update it for this long.
 LATE_PATCH_S = 600
-# Power samples further apart than this are not integrated across.
+# Power samples further apart than this are not integrated across...
 MAX_SAMPLE_GAP_S = 600
+# ...unless power held steady on both sides of the gap. The EX40 can go 20
+# minutes between reports while charging at a constant rate overnight.
+MAX_STEADY_GAP_S = 3600
+STEADY_POWER_TOLERANCE = 0.1
 FALLBACK_CAPACITY_KWH = 75.0
 
 
@@ -88,7 +92,8 @@ def integrate_power(samples: list[tuple[float, float | None]]) -> tuple[float, f
     points = [(ts, w) for ts, w in samples if w is not None]
     for (t0, w0), (t1, w1) in zip(points, points[1:]):
         dt = t1 - t0
-        if 0 < dt <= MAX_SAMPLE_GAP_S:
+        steady = abs(w1 - w0) <= STEADY_POWER_TOLERANCE * max(w0, w1, 1)
+        if 0 < dt <= (MAX_STEADY_GAP_S if steady else MAX_SAMPLE_GAP_S):
             kwh += (w0 + w1) / 2 * dt / 3_600_000
             covered += dt
     return kwh, covered
