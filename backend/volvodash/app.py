@@ -309,7 +309,7 @@ async def status() -> dict[str, Any]:
 
 
 @app.get("/api/history", dependencies=[Depends(user)])
-async def history(request: Request) -> list[dict[str, Any]]:
+async def history(request: Request) -> dict[str, Any]:
     start, end = _range(request)
     rows = ctx.db.q(
         "SELECT t, soc, range_km, power_w, charging_status FROM observations "
@@ -320,10 +320,20 @@ async def history(request: Request) -> list[dict[str, Any]]:
         "WHERE t < ? AND soc IS NOT NULL ORDER BY t DESC LIMIT 1", start)
     out, last = [], None
     for r in [*before, *rows]:
-        if last is None or r["soc"] != last["soc"] or r["charging_status"] != last["charging_status"]:
+        # Keep a reading whenever anything the chart draws changed.
+        if last is None or any(r[k] != last[k] for k in ("soc", "range_km", "power_w", "charging_status")):
             out.append(dict(r))
             last = r
-    return out
+    # Driving and charging stretches overlapping the window, ongoing ones up to now.
+    now = ctx.clock.now()
+    spans = [
+        {"kind": kind, "from": r["started_at"], "to": r["ended_at"] or now}
+        for kind, table in (("drive", "trips"), ("charge", "charges"))
+        for r in ctx.db.q(
+            f"SELECT started_at, ended_at FROM {table} "
+            "WHERE started_at <= ? AND (ended_at IS NULL OR ended_at >= ?)", end, start)
+    ]
+    return {"points": out, "spans": spans}
 
 
 @app.get("/api/events", dependencies=[Depends(user)])

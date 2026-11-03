@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { api, useLive, type Trip } from '../api'
-import { Empty, MapView, PickMap, Tile, split, useAction, usePeriod } from '../components'
+import { Empty, Icon, MapView, PickMap, Tile, split, useAction, usePeriod } from '../components'
 import { day, dayKey, dist, duration, efficiency, kwh, pct, speed, temp, time } from '../format'
 
 const place = (name: string | null) => name || 'Unknown place'
@@ -46,9 +46,9 @@ export function Trips() {
       </div>
 
       <div className="grid tiles">
-        <Tile label="Distance" value={d.value} unit={d.unit} sub={`${totals?.trips ?? 0} trips`} />
-        <Tile label="Energy used" value={e.value} unit={e.unit} sub={duration(totals?.drive_seconds) + ' driving'} />
-        <Tile label="Average consumption" value={eff.value} unit={eff.unit} sub="Total energy over total distance" />
+        <Tile icon="route" label="Distance" value={d.value} unit={d.unit} sub={`${totals?.trips ?? 0} trips`} />
+        <Tile icon="bolt" label="Energy used" value={e.value} unit={e.unit} sub={duration(totals?.drive_seconds) + ' driving'} />
+        <Tile icon="leaf" label="Average consumption" value={eff.value} unit={eff.unit} sub="Total energy over total distance" />
       </div>
 
       <div className="card">
@@ -65,6 +65,7 @@ export function Trips() {
                 {g.trips.map((t) => (
                   <div className="item" key={t.id}>
                     <button className="item-row" aria-expanded={open === t.id} onClick={() => setOpen(open === t.id ? null : t.id)}>
+                      <span className="badge"><Icon name="route" /></span>
                       <span className="when nums soft">
                         {t.start_estimated ? '~' : ''}{time(t.started_at)} – {time(t.ended_at)}
                       </span>

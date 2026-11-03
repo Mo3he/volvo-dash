@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { api, useLive, type Status } from './api'
-import { Link, useAction, usePath } from './components'
+import { Icon, type IconName, Link, useAction, usePath } from './components'
 import { configure } from './format'
 import { Charging } from './pages/Charging'
 import { Overview } from './pages/Overview'
@@ -8,13 +8,13 @@ import { Settings } from './pages/Settings'
 import { Stats } from './pages/Stats'
 import { Trips } from './pages/Trips'
 
-const TABS = [
-  ['/', 'Overview'],
-  ['/trips', 'Trips'],
-  ['/charging', 'Charging'],
-  ['/stats', 'Stats'],
-  ['/settings', 'Settings'],
-] as const
+const TABS: [string, string, IconName][] = [
+  ['/', 'Overview', 'gauge'],
+  ['/trips', 'Trips', 'route'],
+  ['/charging', 'Charging', 'bolt'],
+  ['/stats', 'Stats', 'chart'],
+  ['/settings', 'Settings', 'sliders'],
+]
 
 interface Session {
   setup_needed: boolean
@@ -56,10 +56,10 @@ function Shell() {
     <>
       <header className="topbar">
         <div className="topbar-inner">
-          <span className="brand">{title}</span>
+          <span className="brand"><span className="logo"><Icon name="bolt" /></span>{title}</span>
           <nav className="tabs">
-            {TABS.map(([to, label]) => (
-              <Link key={to} to={to} className={path === to ? 'on' : ''}>{label}</Link>
+            {TABS.map(([to, label, icon]) => (
+              <Link key={to} to={to} className={path === to ? 'on' : ''}><Icon name={icon} />{label}</Link>
             ))}
           </nav>
         </div>

@@ -36,10 +36,10 @@ export function Stats() {
       </div>
 
       <div className="grid tiles">
-        <Tile label="Distance" value={d.value} unit={d.unit} sub={`${t.trips} trips, ${duration(t.drive_seconds)}`} />
-        <Tile label="Average consumption" value={eff.value} unit={eff.unit} />
-        <Tile label="Energy charged" value={charged.value} unit={charged.unit} sub={`${t.charges} sessions`} />
-        <Tile label="Charging cost" value={money(t.cost)} sub={t.cost_per_100km ? `${money(t.cost_per_100km)} per 100 km` : undefined} />
+        <Tile icon="route" label="Distance" value={d.value} unit={d.unit} sub={`${t.trips} trips, ${duration(t.drive_seconds)}`} />
+        <Tile icon="leaf" label="Average consumption" value={eff.value} unit={eff.unit} />
+        <Tile icon="bolt" label="Energy charged" value={charged.value} unit={charged.unit} sub={`${t.charges} sessions`} />
+        <Tile icon="chart" label="Charging cost" value={money(t.cost)} sub={t.cost_per_100km ? `${money(t.cost_per_100km)} per 100 km` : undefined} />
       </div>
 
       {!series.length ? (

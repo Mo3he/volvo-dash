@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, useLive, type AfterCharge, type Charge } from '../api'
-import { axis, Empty, Tile, Tip, split, useAction, usePeriod } from '../components'
+import { axis, Empty, Icon, Tile, Tip, split, useAction, usePeriod } from '../components'
 import { currencySymbol, dateTime, day, dist, duration, efficiency, kw, kwh, money, pct, time } from '../format'
 
 export function Charging() {
@@ -25,12 +25,12 @@ export function Charging() {
       </div>
 
       <div className="grid tiles">
-        <Tile label="Energy charged" value={e.value} unit={e.unit} sub={`${t?.charges ?? 0} sessions`} />
+        <Tile icon="bolt" label="Energy charged" value={e.value} unit={e.unit} sub={`${t?.charges ?? 0} sessions`} />
         <Tile
-          label="Cost" value={money(t?.cost)}
+          icon="chart" label="Cost" value={money(t?.cost)}
           sub={t?.unpriced_charges ? `${t.unpriced_charges} sessions have no price yet` : t?.cost_per_100km ? `${money(t.cost_per_100km)} per 100 km driven` : undefined}
         />
-        <Tile label="Fast charging" value={`${fast}%`} sub={`${kwh(t?.dc_kwh, 0)} on DC`} />
+        <Tile icon="gauge" label="Fast charging" value={`${fast}%`} sub={`${kwh(t?.dc_kwh, 0)} on DC`} />
       </div>
 
       <div className="card">
@@ -39,12 +39,13 @@ export function Charging() {
         ) : (
           <div className="list">
             {charges.map((c) => (
-              <div className="item" key={c.id} style={c === charges[0] ? { borderTop: 0 } : undefined}>
+              <div className="item" key={c.id}>
                 <button className="item-row cols-4" aria-expanded={open === c.id} onClick={() => setOpen(open === c.id ? null : c.id)}>
+                  <span className="badge charge"><Icon name="bolt" /></span>
                   <span className="when nums soft">{day(c.started_at)}</span>
                   <span className="title">
                     {c.place_name || 'Unknown place'}{' '}
-                    {c.charge_type && <span className="pill">{c.charge_type}</span>}
+                    {c.charge_type && <span className={`pill ${c.charge_type.toLowerCase()}`}>{c.charge_type}</span>}
                   </span>
                   <span className="right nums"><strong>{kwh(c.energy_billed_kwh)}</strong></span>
                   <span className="right nums soft hide-s">{pct(c.soc_start)} → {pct(c.soc_end)}</span>
@@ -95,12 +96,12 @@ function ChargeDetail({ id, onSaved }: { id: number; onSaved: () => void }) {
               <Tooltip
                 cursor={{ stroke: 'var(--axis)' }}
                 content={<Tip title={(d) => dateTime(d.ts)} rows={(d) => [
-                  { label: 'Power', value: kw(d.kw), color: 'var(--series-1)' },
+                  { label: 'Power', value: kw(d.kw), color: 'var(--series-2)' },
                   { label: 'Battery', value: pct(d.soc) },
                 ]} />}
               />
               <Line
-                type="monotone" dataKey="kw" stroke="var(--series-1)" strokeWidth={2} dot={false} isAnimationActive={false}
+                type="monotone" dataKey="kw" stroke="var(--series-2)" strokeWidth={2} dot={false} isAnimationActive={false}
                 activeDot={{ r: 4, stroke: 'var(--surface)', strokeWidth: 2 }}
               />
             </LineChart>
