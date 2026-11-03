@@ -260,3 +260,57 @@ def test_parking_without_gps_leaves_the_end_unknown(rig):
             assert t["start_lat"] is None
             checked["from_work"] += 1
     assert all(checked.values()), checked
+
+
+def test_position_entered_by_hand_for_a_car_park_without_gps(rig):
+    from fastapi import HTTPException
+
+    from volvodash import app as webapp
+    from volvodash.detect import rebuild
+
+    r = rig("ex40")
+    r.car.no_gps = {"work"}
+    webapp.ctx.db = r.db
+    garage = {"lat": 57.7061, "lon": 11.9372, "name": "Work garage"}
+    row = lambda i: r.db.one("SELECT * FROM trips WHERE id = ?", i)
+
+    # Live: enter it while the car is still parked there, before it drives off.
+    for _ in range(400):
+        r.run(0.02)
+        last = r.db.one("SELECT * FROM trips ORDER BY started_at DESC LIMIT 1")
+        if last and last["ended_at"] and last["end_lat"] is None and not r.collector.detector.s["trip"]:
+            break
+    else:
+        raise AssertionError("never parked at work")
+    webapp._set_trip_position(last, "end", garage)
+    assert (row(last["id"])["end_lat"], row(last["id"])["end_place"], row(last["id"])["end_manual"]) == (
+        57.7061, "Work garage", 1)
+    r.run(1)
+    nxt = r.db.one("SELECT * FROM trips WHERE started_at > ? ORDER BY started_at LIMIT 1", last["started_at"])
+    assert (nxt["start_lat"], nxt["start_place"], nxt["start_manual"]) == (57.7061, "Work garage", 1)
+    assert row(last["id"])["end_lat"] == 57.7061  # late reports didn't wipe it
+
+    # After the fact: set an end, and the next trip's start follows.
+    r.run(6)
+    later = [t for t in r.db.q("SELECT * FROM trips WHERE end_lat IS NULL AND ended_at IS NOT NULL")]
+    assert later
+    webapp._set_trip_position(later[0], "end", {"lat": 57.7061, "lon": 11.9372})
+    after = r.db.one("SELECT * FROM trips WHERE started_at > ? ORDER BY started_at LIMIT 1", later[0]["started_at"])
+    assert after["start_manual"] == 1 and after["start_lat"] == 57.7061
+
+    # Both survive a rebuild.
+    manual = {(t["started_at"], t["start_manual"], t["end_manual"]) for t in r.db.q(
+        "SELECT * FROM trips WHERE start_manual = 1 OR end_manual = 1")}
+    rebuild(r.db, r.collector.capacity)
+    assert {(t["started_at"], t["start_manual"], t["end_manual"]) for t in r.db.q(
+        "SELECT * FROM trips WHERE start_manual = 1 OR end_manual = 1")} == manual
+
+    # Clearing it clears the neighbour too; a position the car reported can't be overwritten.
+    t = r.db.one("SELECT * FROM trips WHERE end_manual = 1 ORDER BY started_at DESC LIMIT 1")
+    webapp._set_trip_position(t, "end", None)
+    assert row(t["id"])["end_lat"] is None
+    n = r.db.one("SELECT * FROM trips WHERE started_at > ? ORDER BY started_at LIMIT 1", t["started_at"])
+    assert n["start_lat"] is None and n["start_manual"] == 0
+    gps = r.db.one("SELECT * FROM trips WHERE end_lat IS NOT NULL AND end_manual = 0 LIMIT 1")
+    with pytest.raises(HTTPException):
+        webapp._set_trip_position(gps, "end", garage)

@@ -89,6 +89,8 @@ export interface Trip {
   end_lon: number | null
   start_place: string | null
   end_place: string | null
+  start_manual: number
+  end_manual: number
   temp_c: number | null
   note: string | null
   points?: { ts: number; lat: number; lon: number }[]

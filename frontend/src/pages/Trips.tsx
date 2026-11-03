@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { api, useLive, type Trip } from '../api'
-import { Empty, MapView, Tile, split, usePeriod } from '../components'
+import { Empty, MapView, PickMap, Tile, split, useAction, usePeriod } from '../components'
 import { day, dayKey, dist, duration, efficiency, kwh, pct, speed, temp, time } from '../format'
 
 const place = (name: string | null) => name || 'Unknown place'
@@ -16,7 +16,7 @@ function route(t: Trip): string {
 
 export function Trips() {
   const { query, picker } = usePeriod()
-  const { data: trips } = useLive<Trip[]>(`/trips${query}`)
+  const { data: trips, reload: reloadTrips } = useLive<Trip[]>(`/trips${query}`)
   const { data: stats } = useLive<any>(`/stats${query}`)
   const [open, setOpen] = useState<number | null>(null)
 
@@ -73,7 +73,7 @@ export function Trips() {
                       <span className="right nums soft hide-s">{duration(t.ended_at - t.started_at)}</span>
                       <span className="right nums soft hide-s">{kwh(t.energy_kwh)}</span>
                     </button>
-                    {open === t.id && <TripDetail id={t.id} />}
+                    {open === t.id && <TripDetail id={t.id} onChanged={reloadTrips} />}
                   </div>
                 ))}
               </div>
@@ -85,7 +85,7 @@ export function Trips() {
   )
 }
 
-function TripDetail({ id }: { id: number }) {
+function TripDetail({ id, onChanged }: { id: number; onChanged: () => void }) {
   const { data: t, reload } = useLive<Trip>(`/trips/${id}`)
   const [note, setNote] = useState<string | null>(null)
   if (!t) return null
@@ -115,11 +115,9 @@ function TripDetail({ id }: { id: number }) {
         </p>
       ) : null}
       {markers.length > 0 && <MapView path={path} markers={markers} dashed={sparse} />}
-      {(t.start_lat == null || t.end_lat == null) && (
-        <p className="hint">
-          The car had no GPS where it was parked at the {t.end_lat == null ? (t.start_lat == null ? "start and end" : "end") : "start"} of this trip (an underground car park, for example), so that place is unknown.
-        </p>
-      )}
+      {(['start', 'end'] as const).map((at) => (t[`${at}_lat`] == null || t[`${at}_manual`]) && (
+        <PositionFix key={at} t={t} at={at} onSaved={() => { reload(); onChanged() }} />
+      ))}
       {markers.length > 0 && sparse && (
         <p className="hint">The car did not report its position along the way, so only the start and end are shown.</p>
       )}
@@ -139,6 +137,76 @@ function TripDetail({ id }: { id: number }) {
           Save note
         </button>
       </div>
+    </div>
+  )
+}
+
+interface SavedPlace { id: number; name: string; lat: number; lon: number }
+type LatLon = [number, number]
+
+/** Enter a start or end the car had no GPS for: a saved place, or a spot clicked on the map. */
+function PositionFix({ t, at, onSaved }: { t: Trip; at: 'start' | 'end'; onSaved: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [pin, setPin] = useState<LatLon | null>(null)
+  const [name, setName] = useState('')
+  const { data: places } = useLive<SavedPlace[]>('/places')
+  const { busy, run, note } = useAction()
+  const manual = !!t[`${at}_manual`]
+
+  const save = (body: { lat: number; lon: number; name?: string } | null) =>
+    run(async () => {
+      await api(`/trips/${t.id}`, 'PATCH', { [at]: body })
+      setOpen(false)
+      setPin(null)
+      setName('')
+      onSaved()
+    })
+
+  const other = at === 'start' ? [t.end_lat, t.end_lon] : [t.start_lat, t.start_lon]
+  const center: LatLon | null =
+    other[0] != null && other[1] != null ? [other[0], other[1]]
+      : places?.length ? [places[0].lat, places[0].lon]
+        : places ? [50, 10] : null
+
+  return (
+    <div className="stack">
+      <div className="row">
+        <p className="hint grow" style={{ margin: 0 }}>
+          {manual
+            ? `The ${at} position was entered by hand.`
+            : `The car had no GPS at the ${at} of this trip (an underground car park, for example), so that place is unknown.`}
+        </p>
+        {!open && <button className="btn" onClick={() => setOpen(true)}>{manual ? 'Change' : `Set ${at} location`}</button>}
+        {!open && manual && <button className="btn plain" disabled={busy} onClick={() => save(null)}>Remove</button>}
+      </div>
+      {open && (
+        <div className="stack">
+          {places && places.length > 0 && (
+            <label className="field" style={{ maxWidth: 320 }}>
+              A saved place
+              <select value="" onChange={(e) => {
+                const p = places.find((x) => String(x.id) === e.target.value)
+                if (p) save({ lat: p.lat, lon: p.lon, name: p.name })
+              }}>
+                <option value="">Choose…</option>
+                {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+          )}
+          <p className="hint" style={{ margin: 0 }}>{places?.length ? 'Or click' : 'Click'} the spot on the map.</p>
+          {center && <PickMap center={center} zoom={other[0] != null || places?.length ? 15 : 4} value={pin} onPick={setPin} />}
+          <div className="row">
+            <input type="text" className="grow" placeholder="Name (optional, otherwise the address)" value={name} onChange={(e) => setName(e.target.value)} aria-label="Place name" />
+            <button className="btn primary" disabled={busy || !pin} onClick={() => pin && save({ lat: pin[0], lon: pin[1], name })}>Save</button>
+            <button className="btn" onClick={() => { setOpen(false); setPin(null) }}>Cancel</button>
+            {note}
+          </div>
+          <p className="hint" style={{ margin: 0 }}>
+            The car stayed put until its next trip, so that trip’s {at === 'end' ? 'start' : 'end'} gets this position too.
+          </p>
+        </div>
+      )}
+      {!open && note}
     </div>
   )
 }

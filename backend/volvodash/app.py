@@ -354,8 +354,49 @@ async def trip(trip_id: int) -> dict[str, Any]:
 @app.patch("/api/trips/{trip_id}", dependencies=[Depends(user)])
 async def edit_trip(trip_id: int, request: Request) -> dict[str, Any]:
     body = await request.json()
-    ctx.db.update("trips", trip_id, {"note": (body.get("note") or "").strip() or None})
+    row = ctx.db.one("SELECT * FROM trips WHERE id = ?", trip_id)
+    if not row:
+        raise HTTPException(404, "No such trip.")
+    if "note" in body:
+        ctx.db.update("trips", trip_id, {"note": (body.get("note") or "").strip() or None})
+    for end in ("start", "end"):
+        if end in body:
+            _set_trip_position(row, end, body[end])
     return await trip(trip_id)
+
+
+def _set_trip_position(row: Any, end: str, loc: dict[str, Any] | None) -> None:
+    """Enter (or with None, clear) a start or end position by hand.
+
+    Only where the car had no GPS. The car did not move between one trip's
+    end and the next one's start, so the neighbouring trip gets it too.
+    """
+    if row[f"{end}_lat"] is not None and not row[f"{end}_manual"]:
+        raise HTTPException(400, f"The car reported this trip's {end} position itself.")
+    if loc is None:
+        values = {"lat": None, "lon": None, "place": None, "manual": 0}
+    else:
+        lat, lon = _number(loc.get("lat")), _number(loc.get("lon"))
+        if lat is None or lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise HTTPException(400, "A position needs a valid lat and lon.")
+        # No name: the address lookup fills it in.
+        values = {"lat": lat, "lon": lon, "place": (loc.get("name") or "").strip() or None, "manual": 1}
+
+    def apply(trip_id: int, which: str) -> None:
+        ctx.db.update("trips", trip_id, {f"{which}_{k}": v for k, v in values.items()})
+
+    apply(row["id"], end)
+    if end == "end":
+        other = ctx.db.one(
+            "SELECT * FROM trips WHERE started_at > ? ORDER BY started_at LIMIT 1", row["started_at"])
+        which, here, there = "start", row["odo_end"], other and other["odo_start"]
+    else:
+        other = ctx.db.one(
+            "SELECT * FROM trips WHERE started_at < ? ORDER BY started_at DESC LIMIT 1", row["started_at"])
+        which, here, there = "end", row["odo_start"], other and other["odo_end"]
+    parked_between = other and (here is None or there is None or here == there)
+    if parked_between and (other[f"{which}_lat"] is None or other[f"{which}_manual"]):
+        apply(other["id"], which)
 
 
 @app.get("/api/charges", dependencies=[Depends(user)])

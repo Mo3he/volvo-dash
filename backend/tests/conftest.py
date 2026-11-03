@@ -30,7 +30,10 @@ class Rig:
             end = self.clock.t + days * 86400
             while self.clock.t < end:
                 self.clock.t += await self.collector.tick()
-        asyncio.run(go())
+        # One loop for the whole test, like the server: locks belong to a loop.
+        if not hasattr(self, "loop"):
+            self.loop = asyncio.new_event_loop()
+        self.loop.run_until_complete(go())
 
     def trips(self):
         return [dict(r) for r in self.db.q(

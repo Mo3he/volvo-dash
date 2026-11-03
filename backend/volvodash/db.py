@@ -142,6 +142,11 @@ MIGRATIONS = [
     ALTER TABLE trips ADD COLUMN energy_soc_kwh REAL;
     ALTER TABLE trips ADD COLUMN energy_source TEXT;
     """,
+    """
+    -- Start or end position entered by hand, where the car had no GPS.
+    ALTER TABLE trips ADD COLUMN start_manual INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE trips ADD COLUMN end_manual INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 

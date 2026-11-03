@@ -265,18 +265,29 @@ class Detector:
                 "min_start": last["min_start"],
             }
         else:
+            lat, lon = park.get("lat"), park.get("lon")
+            start: dict[str, Any] = {"start_lat": lat, "start_lon": lon}
+            if lat is None:
+                # No GPS where it was parked: use the position entered by hand
+                # for the end of the previous trip, if there is one.
+                before = self.db.one(
+                    "SELECT end_lat, end_lon, end_place FROM trips WHERE end_manual = 1 "
+                    "AND id = (SELECT id FROM trips ORDER BY started_at DESC LIMIT 1)")
+                if before:
+                    lat, lon = before["end_lat"], before["end_lon"]
+                    start = {"start_lat": lat, "start_lon": lon,
+                             "start_place": before["end_place"], "start_manual": 1}
             trip_id = self.db.insert("trips", {
                 "started_at": started,
                 "odo_start": park.get("odo", o.odometer_km),
                 "soc_start": park.get("soc") if park.get("soc") is not None else o.soc,
                 "ta_start": park.get("ta"),
                 "cons_start": park.get("cons"), "tm_start": park.get("tm"),
-                "start_lat": park.get("lat"), "start_lon": park.get("lon"),
+                **start,
             })
-            if park.get("lat") is not None:
+            if lat is not None:
                 self.db.insert("trip_points", {
-                    "trip_id": trip_id, "ts": started,
-                    "lat": park["lat"], "lon": park["lon"],
+                    "trip_id": trip_id, "ts": started, "lat": lat, "lon": lon,
                 })
             trip = {
                 "id": trip_id, "started_at": started, "saw_signal": False,
@@ -405,7 +416,13 @@ class Detector:
         if r["start_lat"] is not None:
             points = points[1:]
         end = points[-1] if points else None
-        values |= {"end_lat": end["lat"] if end else None, "end_lon": end["lon"] if end else None}
+        if end:
+            # A real fix beats one entered by hand.
+            values |= {"end_lat": end["lat"], "end_lon": end["lon"], "end_manual": 0}
+            if r["end_manual"]:
+                values["end_place"] = None
+        elif not r["end_manual"]:
+            values |= {"end_lat": None, "end_lon": None}
         self.db.update("trips", trip_id, values)
         return dict(r) | values
 
@@ -586,10 +603,11 @@ DERIVED_TABLES = ("trips", "trip_points", "charges", "charge_samples", "events")
 def rebuild(db: DB, capacity_kwh: Callable[[], float | None]) -> dict[str, int]:
     """Throw away trips and charges and replay the whole observation log.
 
-    Things the user typed in (notes, cost overrides) are carried over to the
+    Things the user typed in (notes, positions, cost overrides) are carried over to the
     rebuilt row that overlaps the old one most.
     """
-    keep_trips = [dict(r) for r in db.q("SELECT * FROM trips WHERE note IS NOT NULL")]
+    keep_trips = [dict(r) for r in db.q(
+        "SELECT * FROM trips WHERE note IS NOT NULL OR start_manual = 1 OR end_manual = 1")]
     keep_charges = [
         dict(r) for r in db.q(
             "SELECT * FROM charges WHERE note IS NOT NULL OR cost_override IS NOT NULL "
@@ -633,7 +651,13 @@ def rebuild(db: DB, capacity_kwh: Callable[[], float | None]) -> dict[str, int]:
         for old in keep_trips:
             match = _overlapping(db, "trips", old)
             if match:
-                db.update("trips", match, {"note": old["note"]})
+                values = {"note": old["note"]} if old["note"] is not None else {}
+                new = db.one("SELECT start_lat, end_lat FROM trips WHERE id = ?", match)
+                # Positions entered by hand, unless the car has since reported one.
+                for end in ("start", "end"):
+                    if old[f"{end}_manual"] and new[f"{end}_lat"] is None:
+                        values |= {f"{end}_{k}": old[f"{end}_{k}"] for k in ("lat", "lon", "place", "manual")}
+                db.update("trips", match, values)
         for old in keep_charges:
             match = _overlapping(db, "charges", old)
             if match:

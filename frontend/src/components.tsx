@@ -139,6 +139,43 @@ export function MapView({ path, markers, dashed }: { path?: LatLon[]; markers?: 
   return <div ref={el} className="map" />
 }
 
+/** A map to click a position on. Keeps its zoom while you move the pin. */
+export function PickMap({ center, zoom = 15, value, onPick }: { center: LatLon; zoom?: number; value: LatLon | null; onPick: (at: LatLon) => void }) {
+  const el = useRef<HTMLDivElement>(null)
+  const pin = useRef<L.CircleMarker | null>(null)
+  const map = useRef<L.Map | null>(null)
+  const pick = useRef(onPick)
+  pick.current = onPick
+
+  useEffect(() => {
+    if (!el.current) return
+    const m = L.map(el.current, { scrollWheelZoom: true, attributionControl: true }).setView(center, zoom)
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(m)
+    m.on('click', (e: L.LeafletMouseEvent) => pick.current([e.latlng.lat, e.latlng.lng]))
+    map.current = m
+    return () => {
+      m.remove()
+      map.current = null
+      pin.current = null
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!map.current) return
+    pin.current?.remove()
+    pin.current = null
+    if (value) {
+      const color = getComputedStyle(document.documentElement).getPropertyValue('--series-1').trim()
+      pin.current = L.circleMarker(value, { radius: 8, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }).addTo(map.current)
+    }
+  }, [value?.[0], value?.[1]]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return <div ref={el} className="map" style={{ cursor: 'crosshair' }} />
+}
+
 // -- chart tooltip ---------------------------------------------------------------
 
 export function Tip({ active, payload, title, rows }: {
