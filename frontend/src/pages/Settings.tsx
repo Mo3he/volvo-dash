@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, useLive, type Status } from '../api'
-import { useAction } from '../components'
+import { PickMap, useAction } from '../components'
 import { ago, currencySymbol, dateTime } from '../format'
 
 export function Settings({ status }: { status: Status }) {
@@ -391,6 +391,23 @@ function Places({ status }: { status: Status }) {
           </tbody>
         </table>
       )}
+      {places && (() => {
+        const pin = form.lat && form.lon && !isNaN(+form.lat) && !isNaN(+form.lon) ? [+form.lat, +form.lon] as [number, number] : null
+        const start: [number, number] | null =
+          pin ?? (here ? [here.lat!, here.lon!] : places.length ? [places[0].lat, places[0].lon] : null)
+        return (
+          <>
+            <p className="hint" style={{ margin: 0 }}>Click the map to put the place there. The circle is the radius it covers.</p>
+            <PickMap
+              key={form.id ?? 'new'}
+              center={start ?? [50, 10]} zoom={start ? 16 : 4}
+              value={pin} radius={+form.radius_m || undefined}
+              onPick={([lat, lon]) => setForm({ ...form, lat: lat.toFixed(6), lon: lon.toFixed(6) })}
+              others={places.filter((p) => String(p.id) !== form.id).map((p) => ({ at: [p.lat, p.lon], label: p.name, radius: p.radius_m }))}
+            />
+          </>
+        )
+      })()}
       <div className="form">
         <label className="field">Name<input type="text" value={form.name} placeholder="Home" onChange={set('name')} /></label>
         <label className="field">Latitude<input type="number" step="any" value={form.lat} onChange={set('lat')} /></label>

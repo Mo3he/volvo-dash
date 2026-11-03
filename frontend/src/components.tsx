@@ -140,9 +140,19 @@ export function MapView({ path, markers, dashed }: { path?: LatLon[]; markers?: 
 }
 
 /** A map to click a position on. Keeps its zoom while you move the pin. */
-export function PickMap({ center, zoom = 15, value, onPick }: { center: LatLon; zoom?: number; value: LatLon | null; onPick: (at: LatLon) => void }) {
+export function PickMap({ center, zoom = 15, value, onPick, radius, others }: {
+  center: LatLon
+  zoom?: number
+  value: LatLon | null
+  onPick: (at: LatLon) => void
+  /** Metres: drawn around the pin. */
+  radius?: number
+  /** Other places, shown faintly for reference. */
+  others?: { at: LatLon; label: string; radius?: number }[]
+}) {
   const el = useRef<HTMLDivElement>(null)
-  const pin = useRef<L.CircleMarker | null>(null)
+  const pin = useRef<L.LayerGroup | null>(null)
+  const rest = useRef<L.LayerGroup | null>(null)
   const map = useRef<L.Map | null>(null)
   const pick = useRef(onPick)
   pick.current = onPick
@@ -160,18 +170,37 @@ export function PickMap({ center, zoom = 15, value, onPick }: { center: LatLon; 
       m.remove()
       map.current = null
       pin.current = null
+      rest.current = null
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!map.current) return
+    const m = map.current
+    if (!m) return
     pin.current?.remove()
     pin.current = null
-    if (value) {
-      const color = getComputedStyle(document.documentElement).getPropertyValue('--series-1').trim()
-      pin.current = L.circleMarker(value, { radius: 8, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }).addTo(map.current)
+    if (!value) return
+    const color = getComputedStyle(document.documentElement).getPropertyValue('--series-1').trim()
+    const g = L.layerGroup().addTo(m)
+    if (radius) L.circle(value, { radius, color, weight: 1.5, fillOpacity: 0.12 }).addTo(g)
+    L.circleMarker(value, { radius: 8, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 }).addTo(g)
+    pin.current = g
+    // Typed-in coordinates may be off screen: bring them into view.
+    if (!m.getBounds().contains(value)) m.panTo(value)
+  }, [value?.[0], value?.[1], radius]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const othersKey = JSON.stringify(others ?? [])
+  useEffect(() => {
+    const m = map.current
+    if (!m) return
+    rest.current?.remove()
+    const g = L.layerGroup().addTo(m)
+    for (const o of others ?? []) {
+      if (o.radius) L.circle(o.at, { radius: o.radius, color: '#8a8984', weight: 1, fillOpacity: 0.06, interactive: false }).addTo(g)
+      L.circleMarker(o.at, { radius: 5, color: '#fff', weight: 1.5, fillColor: '#8a8984', fillOpacity: 1 }).addTo(g).bindTooltip(o.label)
     }
-  }, [value?.[0], value?.[1]]) // eslint-disable-line react-hooks/exhaustive-deps
+    rest.current = g
+  }, [othersKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={el} className="map" style={{ cursor: 'crosshair' }} />
 }
