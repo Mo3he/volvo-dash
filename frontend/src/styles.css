@@ -163,7 +163,8 @@ main { max-width: 1160px; margin: 0 auto; padding: 24px 20px 72px; display: grid
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .grid { display: grid; gap: 18px; }
 .cols-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
-.tiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 14px; }
+.cols-2.stretch { align-items: stretch; }
+.tiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); }
 @media (max-width: 640px) {
   .tiles { grid-template-columns: 1fr 1fr; gap: 10px; }
   .tile { padding: 14px; }

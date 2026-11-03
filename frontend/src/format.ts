@@ -64,7 +64,7 @@ export function pct(v: number | null | undefined): string {
 export function money(v: number | null | undefined): string {
   if (v == null) return dash
   const text = num(v, 2)
-  return currency.length > 1 ? `${text} ${currency}` : `${currency}${text}`
+  return currency.length > 1 ? `${text}\u00a0${currency}` : `${currency}${text}`
 }
 
 export const currencySymbol = () => currency

@@ -103,14 +103,13 @@ export function Overview({ status: s }: { status: Status }) {
 
       <SinceCharge s={s} />
 
-      <div className="grid cols-2">
-        <div className="grid" style={{ alignContent: 'start' }}>
-          <div className="grid tiles">
-            <LastTrip s={s} />
-            <LastCharge s={s} />
-          </div>
-          <Controls s={s} />
-        </div>
+      <div className="grid tiles">
+        <LastTrip s={s} />
+        <LastCharge s={s} />
+      </div>
+
+      <div className="grid cols-2 stretch">
+        <Controls s={s} />
         <Checks s={s} />
       </div>
 
@@ -169,7 +168,7 @@ function LastTrip({ s }: { s: Status }) {
       label="Last trip"
       value={d.value}
       unit={d.unit}
-      sub={<>{day(t.ended_at)}, {time(t.ended_at)} · {t.efficiency ? efficiency(t.efficiency) : duration(t.ended_at - t.started_at)}</>}
+      sub={<><div>{day(t.ended_at)}, {time(t.ended_at)}</div><div>{t.efficiency ? efficiency(t.efficiency) : duration(t.ended_at - t.started_at)}</div></>}
     />
   )
 }
@@ -184,7 +183,7 @@ function LastCharge({ s }: { s: Status }) {
       label="Last charge"
       value={e.value}
       unit={e.unit}
-      sub={<>{day(c.started_at)} · {pct(c.soc_start)} → {pct(c.soc_end)}{c.cost != null && <> · {money(c.cost)}</>}</>}
+      sub={<><div>{day(c.started_at)} · {pct(c.soc_start)} → {pct(c.soc_end)}</div>{c.cost != null && <div>{money(c.cost)}</div>}</>}
     />
   )
 }
