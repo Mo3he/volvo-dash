@@ -19,7 +19,9 @@ Volvo ID. No reverse-engineered libraries.
 - **Trips**: distance, duration, energy, consumption, outside temperature,
   start and end address, map, notes, CSV export.
 - **Charging**: energy, AC/DC, battery level before and after, power curve,
-  cost from per-place prices (editable per session), CSV export.
+  cost from per-place prices (editable per session), CSV export, and the
+  driving after each charge: distance, energy, consumption, battery used and
+  the range that works out to on a full charge.
 - **Stats**: distance, energy charged (AC vs DC), cost, and consumption by
   outside temperature, over any period.
 - **Controls**: lock, start climate, stop climate.

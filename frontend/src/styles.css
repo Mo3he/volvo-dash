@@ -159,6 +159,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   width: 100%; border: 0; background: none; text-align: left;
   grid-template-columns: 150px minmax(0, 1fr) repeat(3, minmax(64px, auto));
 }
+@media (min-width: 641px) {
+  .item-row.cols-4 { grid-template-columns: 150px minmax(0, 1fr) repeat(4, minmax(64px, auto)); }
+}
 .item-row:hover { background: var(--wash); }
 .item-row .when { white-space: nowrap; }
 .item-row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

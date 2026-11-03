@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { api, useLive, type Charge } from '../api'
+import { api, useLive, type AfterCharge, type Charge } from '../api'
 import { axis, Empty, Tile, Tip, split, useAction, usePeriod } from '../components'
-import { currencySymbol, dateTime, day, duration, kw, kwh, money, pct, time } from '../format'
+import { currencySymbol, dateTime, day, dist, duration, efficiency, kw, kwh, money, pct, time } from '../format'
 
 export function Charging() {
   const { query, picker } = usePeriod()
@@ -40,7 +40,7 @@ export function Charging() {
           <div className="list">
             {charges.map((c) => (
               <div className="item" key={c.id} style={c === charges[0] ? { borderTop: 0 } : undefined}>
-                <button className="item-row" aria-expanded={open === c.id} onClick={() => setOpen(open === c.id ? null : c.id)}>
+                <button className="item-row cols-4" aria-expanded={open === c.id} onClick={() => setOpen(open === c.id ? null : c.id)}>
                   <span className="when nums soft">{day(c.started_at)}</span>
                   <span className="title">
                     {c.place_name || 'Unknown place'}{' '}
@@ -48,6 +48,7 @@ export function Charging() {
                   </span>
                   <span className="right nums"><strong>{kwh(c.energy_billed_kwh)}</strong></span>
                   <span className="right nums soft hide-s">{pct(c.soc_start)} → {pct(c.soc_end)}</span>
+                  <span className="right nums soft hide-s" title="Driven after this charge">{c.after ? `${dist(c.after.distance_km, 0)}${c.after.ongoing ? ' so far' : ''}` : ''}</span>
                   <span className="right nums soft hide-s">{money(c.cost)}</span>
                 </button>
                 {open === c.id && <ChargeDetail id={c.id} onSaved={() => { reload(); reloadStats() }} />}
@@ -107,7 +108,28 @@ function ChargeDetail({ id, onSaved }: { id: number; onSaved: () => void }) {
         </div>
       )}
 
+      {c.after && <AfterThisCharge a={c.after} />}
+
       <ChargeEdit c={c} onSaved={() => { reload(); onSaved() }} />
+    </div>
+  )
+}
+
+function AfterThisCharge({ a }: { a: AfterCharge }) {
+  return (
+    <div className="stack">
+      <h3>{a.ongoing ? 'Since this charge' : 'After this charge'}</h3>
+      <div className="facts">
+        <div><dt>Driven</dt><dd>{dist(a.distance_km)} in {a.trips} {a.trips === 1 ? 'trip' : 'trips'}</dd></div>
+        <div><dt>Energy used</dt><dd>{kwh(a.energy_kwh)}</dd></div>
+        <div><dt>Consumption</dt><dd>{efficiency(a.efficiency)}</dd></div>
+        <div><dt>Battery</dt><dd>{pct(a.soc_from)} → {pct(a.soc_to)}{a.ongoing ? ' now' : ''}</dd></div>
+        <div><dt>Range on a full charge</dt><dd>{a.full_range_km != null ? `about ${dist(a.full_range_km, 0)}` : 'Not enough battery used yet'}</dd></div>
+      </div>
+      <p className="hint">
+        {a.ongoing ? 'Counts up until the next charge. ' : `Until the next charge on ${dateTime(a.until)}. `}
+        Battery used includes standby and climate while parked, so the full-charge range is what you would get in everyday use, not just while driving.
+      </p>
     </div>
   )
 }

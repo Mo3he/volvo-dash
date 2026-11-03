@@ -24,6 +24,7 @@ from .clock import Clock, ManualClock, SimClock
 from .collector import Collector
 from .db import DB, DEFAULT_SETTINGS, SECRET_SETTINGS, get_settings, row_dict
 from .mqtt import MqttBridge
+from .periods import after_charge
 from . import raw
 from .detect import OBS_FIELDS, Obs, haversine_m
 from .enrich import Enricher, Lookups, send_webhook
@@ -226,8 +227,10 @@ async def change_password(request: Request) -> dict[str, bool]:
 
 # -- views -----------------------------------------------------------------
 
-def _charge_view(row: Any) -> dict[str, Any]:
+def _charge_view(row: Any, with_after: bool = True) -> dict[str, Any]:
     c = dict(row)
+    if with_after:
+        c["after"] = after_charge(ctx.db, c, ctx.collector.obs.soc)
     energy = c["energy_override"] if c["energy_override"] is not None else c["energy_kwh"]
     c["energy_billed_kwh"] = energy
     if c["cost_override"] is not None:
@@ -403,7 +406,7 @@ async def stats(request: Request) -> dict[str, Any]:
     tz = _tz()
     trip_rows = ctx.db.q(
         "SELECT * FROM trips WHERE ended_at IS NOT NULL AND started_at BETWEEN ? AND ?", start, end)
-    charge_rows = [_charge_view(r) for r in ctx.db.q(
+    charge_rows = [_charge_view(r, with_after=False) for r in ctx.db.q(
         "SELECT * FROM charges WHERE ended_at IS NOT NULL AND started_at BETWEEN ? AND ?", start, end)]
 
     first = min([r["started_at"] for r in trip_rows] + [c["started_at"] for c in charge_rows],

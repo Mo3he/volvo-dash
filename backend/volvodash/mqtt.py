@@ -21,6 +21,7 @@ import aiomqtt
 
 from .collector import Collector
 from .db import DB, get_settings
+from .periods import after_charge
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +56,11 @@ SENSORS: list[tuple[str, str, str | None, str | None, str | None, str | None]] =
     ("last_charge_energy", "Last charge energy", "kWh", "energy", None, None),
     ("last_charge_cost", "Last charge cost", None, None, None, "mdi:cash"),
     ("last_charge_end", "Last charge ended", None, "timestamp", None, None),
+    ("since_charge_distance", "Distance since last charge", "km", "distance", None, "mdi:map-marker-distance"),
+    ("since_charge_energy", "Energy since last charge", "kWh", "energy", None, None),
+    ("since_charge_consumption", "Consumption since last charge", "kWh/100km", None, None, "mdi:lightning-bolt"),
+    ("since_charge_battery_used", "Battery used since last charge", "%", None, None, "mdi:battery-minus"),
+    ("full_charge_range", "Range on a full charge", "km", "distance", None, "mdi:map-marker-radius"),
     ("api_calls_today", "Volvo API calls today", None, None, "measurement", "mdi:api"),
 ]
 
@@ -112,6 +118,8 @@ def state_payload(db: DB, collector: Collector) -> dict[str, Any]:
     )
     stamps = [t for t in (o.soc_ts, o.charge_ts, o.engine_ts, o.availability_ts,
                           o.odometer_ts, o.location_ts) if t]
+    # While charging, the drive since the last charge is over: report zero.
+    since = None if d["charge"] or not last else after_charge(db, dict(last), o.soc)
     lock = state.get("centralLock")
     return {
         "battery_level": o.soc,
@@ -135,6 +143,11 @@ def state_payload(db: DB, collector: Collector) -> dict[str, Any]:
         "last_charge_energy": _round(last["energy_kwh"], 2) if last else None,
         "last_charge_cost": last_cost,
         "last_charge_end": _iso(last["ended_at"]) if last else None,
+        "since_charge_distance": since["distance_km"] if since else 0,
+        "since_charge_energy": since["energy_kwh"] if since else 0,
+        "since_charge_consumption": since["efficiency"] if since else None,
+        "since_charge_battery_used": since["soc_used"] if since else 0,
+        "full_charge_range": since["full_range_km"] if since else None,
         "api_calls_today": collector.client.calls_today(),
         "plugged_in": o.connection == "CONNECTED",
         "charging": o.charging_status == "CHARGING",

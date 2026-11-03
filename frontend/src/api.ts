@@ -119,6 +119,21 @@ export interface Charge {
   cost: number | null
   note: string | null
   samples?: { ts: number; power_w: number | null; soc: number | null }[]
+  /** Driving from the end of this charge until the next one (or now). */
+  after?: AfterCharge | null
+}
+
+export interface AfterCharge {
+  ongoing: boolean
+  until: number | null
+  trips: number
+  distance_km: number
+  energy_kwh: number | null
+  efficiency: number | null
+  soc_from: number | null
+  soc_to: number | null
+  soc_used: number | null
+  full_range_km: number | null
 }
 
 export interface Status {

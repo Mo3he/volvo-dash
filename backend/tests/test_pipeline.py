@@ -212,3 +212,26 @@ def test_car_energy_counter_and_when_not_to_trust_it():
     # At thousands of km, 0.1 kWh/100 km rounding is worse than one battery percent.
     assert car_energy(trip(18.0, 900.0, 18.0, 910.0), 10.0, 81.6) is None
     assert car_energy(trip(18.0, 600.0, 18.0, 610.0), 10.0, 81.6) == pytest.approx(1.8)
+
+
+def test_driving_after_each_charge(rig):
+    from volvodash.periods import after_charge
+
+    r = rig("ex40")
+    r.run(14)
+    charges = sorted(r.charges(), key=lambda c: c["started_at"])
+    trips = r.trips()
+    afters = [after_charge(r.db, c, r.collector.obs.soc) for c in charges]
+    # Every trip after the first charge is counted under exactly one charge.
+    after_first = [t for t in trips if t["started_at"] >= charges[0]["ended_at"]]
+    assert sum(a["trips"] for a in afters) == len(after_first)
+    assert sum(a["distance_km"] for a in afters) == pytest.approx(
+        sum(t["distance_km"] for t in after_first), abs=0.1 * len(afters))
+    assert [a["ongoing"] for a in afters] == [False] * (len(afters) - 1) + [True]
+    for c, a, nxt in zip(charges, afters, charges[1:] + [None]):
+        assert a["soc_from"] == c["soc_end"]
+        assert a["soc_to"] == (nxt["soc_start"] if nxt else r.collector.obs.soc)
+        if a["full_range_km"] is not None:
+            # The simulator's car does 81.6 kWh / ~17-25 kWh/100 km.
+            assert 280 < a["full_range_km"] < 520
+    assert any(a["full_range_km"] for a in afters)
