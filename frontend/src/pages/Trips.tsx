@@ -48,7 +48,7 @@ export function Trips() {
       <div className="grid tiles">
         <Tile icon="route" label="Distance" value={d.value} unit={d.unit} sub={`${totals?.trips ?? 0} trips`} />
         <Tile icon="bolt" label="Energy used" value={e.value} unit={e.unit} sub={duration(totals?.drive_seconds) + ' driving'} />
-        <Tile icon="leaf" label="Average consumption" value={eff.value} unit={eff.unit} sub="Total energy over total distance" />
+        <Tile icon="leaf" label="Consumption" value={eff.value} unit={eff.unit} sub="Average over the period" />
       </div>
 
       <div className="card">
@@ -69,7 +69,7 @@ export function Trips() {
                       <span className="when nums soft">
                         {t.start_estimated ? '~' : ''}{time(t.started_at)} – {time(t.ended_at)}
                       </span>
-                      <span className="title">{route(t)}</span>
+                      <span className="title" title={route(t)}>{route(t)}</span>
                       <span className="right nums"><strong>{dist(t.distance_km)}</strong></span>
                       <span className="right nums soft hide-s">{duration(t.ended_at - t.started_at)}</span>
                       <span className="right nums soft hide-s">{kwh(t.energy_kwh)}</span>
@@ -116,7 +116,7 @@ function TripDetail({ id, onChanged }: { id: number; onChanged: () => void }) {
         </p>
       ) : null}
       {markers.length > 0 && <MapView path={path} markers={markers} dashed={sparse} />}
-      {(['start', 'end'] as const).map((at) => (t[`${at}_lat`] == null || t[`${at}_manual`]) && (
+      {(['start', 'end'] as const).map((at) => (t[`${at}_lat`] == null || !!t[`${at}_manual`]) && (
         <PositionFix key={at} t={t} at={at} onSaved={() => { reload(); onChanged() }} />
       ))}
       {markers.length > 0 && sparse && (

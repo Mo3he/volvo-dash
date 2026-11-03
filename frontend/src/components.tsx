@@ -56,6 +56,9 @@ const ICONS = {
   fan: ['c12 12 2', 'M12 10c0-4 1-7 4-7s3 4-2 7', 'M14 12c4 0 7 1 7 4s-4 3-7-2', 'M12 14c0 4-1 7-4 7s-3-4 2-7', 'M10 12c-4 0-7-1-7-4s4-3 7 2'],
   shield: ['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', 'M9 12l2 2 4-4'],
   activity: ['M22 12h-4l-3 9L9 3l-3 9H2'],
+  sun: ['c12 12 4', 'M12 2v2', 'M12 20v2', 'M4.93 4.93l1.41 1.41', 'M17.66 17.66l1.41 1.41', 'M2 12h2', 'M20 12h2', 'M6.34 17.66l-1.41 1.41', 'M19.07 4.93l-1.41 1.41'],
+  moon: ['M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'],
+  auto: ['c12 12 9', 'fM12 3a9 9 0 0 1 0 18z'],
 } as const
 
 export type IconName = keyof typeof ICONS
@@ -65,6 +68,7 @@ export function Icon({ name, className = 'icon' }: { name: IconName; className?:
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {ICONS[name].map((d) => {
+        if (d.startsWith('f')) return <path key={d} d={d.slice(1)} fill="currentColor" stroke="none" />
         if (d.startsWith('c')) {
           const [cx, cy, r] = d.slice(1).split(' ').map(Number)
           return <circle key={d} cx={cx} cy={cy} r={r} />
@@ -155,6 +159,41 @@ export function BatteryRing({ soc, target, children }: { soc: number; target?: n
         {tick && <line className="limit" x1={tick[0][0]} y1={tick[0][1]} x2={tick[1][0]} y2={tick[1][1]} strokeWidth="3" strokeLinecap="round" />}
       </svg>
       <div className="ring-text">{children}</div>
+    </div>
+  )
+}
+
+type Theme = 'auto' | 'light' | 'dark'
+
+/** Auto follows the device; the choice is remembered in this browser only. */
+export function ThemeSwitch() {
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const t = localStorage.getItem('theme')
+      return t === 'light' || t === 'dark' ? t : 'auto'
+    } catch {
+      return 'auto'
+    }
+  })
+  const pick = (t: Theme) => {
+    setTheme(t)
+    if (t === 'auto') delete document.documentElement.dataset.theme
+    else document.documentElement.dataset.theme = t
+    try {
+      if (t === 'auto') localStorage.removeItem('theme')
+      else localStorage.setItem('theme', t)
+    } catch {
+      /* storage blocked: the choice lasts until reload */
+    }
+  }
+  const options: [Theme, IconName, string][] = [['auto', 'auto', 'Auto, follow the device'], ['light', 'sun', 'Light'], ['dark', 'moon', 'Dark']]
+  return (
+    <div className="seg icons theme" role="group" aria-label="Theme">
+      {options.map(([t, icon, label]) => (
+        <button key={t} className={t === theme ? 'on' : ''} aria-pressed={t === theme} aria-label={label} title={label} onClick={() => pick(t)}>
+          <Icon name={icon} />
+        </button>
+      ))}
     </div>
   )
 }

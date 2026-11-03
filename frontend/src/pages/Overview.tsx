@@ -153,7 +153,7 @@ function SinceCharge({ s }: { s: Status }) {
         <Tile icon="route" label="Driven" value={d.value} unit={d.unit} sub={`${a.trips} ${a.trips === 1 ? 'trip' : 'trips'}`} />
         <Tile icon="leaf" label="Consumption" value={e.value} unit={e.unit} sub={a.energy_kwh != null ? `${kwh(a.energy_kwh)} used driving` : undefined} />
         <Tile icon="battery" label="Battery used" value={a.soc_used != null ? Math.round(a.soc_used) : '–'} unit={a.soc_used != null ? '%' : undefined} sub={`${pct(a.soc_from)} → ${pct(a.soc_to)}`} />
-        <Tile icon="gauge" label="Full-charge range" value={r.value} unit={r.unit} sub={a.full_range_km != null ? 'At this rate, standby included' : 'Needs 5% of battery used'} />
+        <Tile icon="gauge" label="Full range" value={r.value} unit={r.unit} sub={a.full_range_km != null ? 'On a full charge at this rate' : 'Needs 5% of battery used'} />
       </div>
     </>
   )

@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { api, useLive, type Status } from './api'
-import { Icon, type IconName, Link, useAction, usePath } from './components'
+import { Icon, type IconName, Link, ThemeSwitch, useAction, usePath } from './components'
 import { configure } from './format'
 import { Charging } from './pages/Charging'
 import { Overview } from './pages/Overview'
@@ -62,6 +62,7 @@ function Shell() {
               <Link key={to} to={to} className={path === to ? 'on' : ''}><Icon name={icon} />{label}</Link>
             ))}
           </nav>
+          <ThemeSwitch />
         </div>
       </header>
       <main>

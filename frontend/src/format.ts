@@ -40,14 +40,14 @@ export function speed(kmh: number | null | undefined): string {
 /** Stored as kWh/100 km. Miles users get mi/kWh, where higher is better. */
 export function efficiency(v: number | null | undefined): string {
   if (v == null || v <= 0) return dash
-  return units === 'mi' ? `${num(100 / v / MILE, 1)} mi/kWh` : `${num(v, 1)} kWh/100 km`
+  return units === 'mi' ? `${num(100 / v / MILE, 1)} mi/kWh` : `${num(v, 1)} kWh/100\u00a0km`
 }
 
 export function efficiencyValue(v: number): number {
   return units === 'mi' ? 100 / v / MILE : v
 }
 
-export const efficiencyUnit = () => (units === 'mi' ? 'mi/kWh' : 'kWh/100 km')
+export const efficiencyUnit = () => (units === 'mi' ? 'mi/kWh' : 'kWh/100\u00a0km')
 
 export function kwh(v: number | null | undefined, digits = 1): string {
   return v == null ? dash : `${num(v, digits)} kWh`

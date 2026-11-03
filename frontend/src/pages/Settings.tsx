@@ -271,7 +271,7 @@ function General({ capacity, mqtt }: { capacity: number | null; mqtt: Status['co
           <label className="field">While driving or charging, every (seconds)<input type="number" min="30" value={form.active_interval_s} onChange={set('active_interval_s')} /></label>
           <label className="field">Join trips when a stop is shorter than (seconds)<input type="number" min="0" value={form.merge_gap_s} onChange={set('merge_gap_s')} /></label>
         </div>
-        <label className="row" style={{ gap: 8 }}>
+        <label className="check">
           <input type="checkbox" checked={form.lookups_enabled} onChange={(e) => setForm({ ...form, lookups_enabled: e.target.checked })} />
           Look up street addresses and outside temperature for trips
         </label>
@@ -293,7 +293,7 @@ function General({ capacity, mqtt }: { capacity: number | null; mqtt: Status['co
             </span>
           )}
         </div>
-        <label className="row" style={{ gap: 8 }}>
+        <label className="check">
           <input type="checkbox" checked={form.mqtt_enabled} onChange={(e) => setForm({ ...form, mqtt_enabled: e.target.checked })} />
           Publish to an MQTT broker
         </label>
@@ -308,7 +308,7 @@ function General({ capacity, mqtt }: { capacity: number | null; mqtt: Status['co
                 <input type="password" autoComplete="off" value={form.mqtt_password} placeholder={form.has_mqtt_password ? 'Saved. Leave blank to keep' : ''} onChange={set('mqtt_password')} />
               </label>
             </div>
-            <label className="row" style={{ gap: 8 }}>
+            <label className="check">
               <input type="checkbox" checked={form.mqtt_tls} onChange={(e) => setForm({ ...form, mqtt_tls: e.target.checked })} />
               Use TLS
             </label>
@@ -338,7 +338,7 @@ function General({ capacity, mqtt }: { capacity: number | null; mqtt: Status['co
         </label>
         <div className="row">
           {EVENTS.map(([key, label]) => (
-            <label key={key} className="row" style={{ gap: 6 }}>
+            <label key={key} className="check">
               <input type="checkbox" checked={form.webhook_events.includes(key)} onChange={() => toggle(key)} />{label}
             </label>
           ))}
