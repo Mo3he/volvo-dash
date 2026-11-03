@@ -163,6 +163,7 @@ class Detector:
         self._charge(o, prev)
 
         if not self.s["trip"]:
+            lat, lon = self._position(o)
             self.s["park"] = {
                 "car_t": o.car_time() or o.t,
                 "odo": o.odometer_km,
@@ -170,8 +171,8 @@ class Detector:
                 "ta": o.trip_auto_km,
                 "cons": o.avg_consumption,
                 "tm": o.trip_manual_km,
-                "lat": o.lat,
-                "lon": o.lon,
+                "lat": lat,
+                "lon": lon,
             }
         self.s["prev"] = asdict(o)
         self.db.set("detector_state", self.s)
@@ -283,8 +284,21 @@ class Detector:
                 # The car was known to be parked at this time, so the trip began later.
                 "min_start": park.get("car_t"),
             }
+        # Positions the car reported before this moment no longer say where it is.
+        self.s["moved_at"] = started
         self.s["trip"] = trip
         return trip
+
+    def _position(self, o: Obs) -> tuple[float | None, float | None]:
+        """Where the car is, if it reported a position since it last set off.
+
+        Without GPS (an underground car park) the car keeps serving the last
+        fix it had, which is where the previous trip began, not where it is now.
+        """
+        moved_at = self.s.get("moved_at")
+        if o.lat is None or not o.location_ts or (moved_at and o.location_ts <= moved_at):
+            return None, None
+        return o.lat, o.lon
 
     def _trip_point(self, trip_id: int, o: Obs) -> None:
         if o.lat is None or o.lon is None or not o.location_ts:
@@ -293,7 +307,8 @@ class Detector:
             "SELECT ts, lat, lon FROM trip_points WHERE trip_id = ? ORDER BY ts DESC LIMIT 1",
             trip_id,
         )
-        if last and (o.location_ts <= last["ts"] or (last["lat"], last["lon"]) == (o.lat, o.lon)):
+        # Same place with a newer fix is kept: that is a trip back to where it began.
+        if last and o.location_ts <= last["ts"]:
             return
         self.db.insert("trip_points", {
             "trip_id": trip_id, "ts": o.location_ts, "lat": o.lat, "lon": o.lon,
@@ -309,7 +324,7 @@ class Detector:
             "id": trip["id"], "started_at": row["started_at"], "ended_at": ended_at,
             "saw_signal": trip["saw_signal"], "moves": trip["moves"],
             "min_start": trip["min_start"], "speed_hint": trip.get("speed_hint"),
-            "charged": False,
+            "charged": False, "no_end": row["end_lat"] is None,
         }
         self._event(
             ended_at, "trip_ended", trip_id=trip["id"],
@@ -383,19 +398,30 @@ class Detector:
             "efficiency": round(efficiency, 1) if efficiency is not None else None,
             "avg_speed_kmh": round(distance / hours, 1) if hours > 1 / 60 else None,
         }
-        last_point = self.db.one(
-            "SELECT lat, lon FROM trip_points WHERE trip_id = ? ORDER BY ts DESC LIMIT 1",
-            trip_id,
-        )
-        if last_point:
-            values |= {"end_lat": last_point["lat"], "end_lon": last_point["lon"]}
+        # The end is the last position reported during or after the trip. The
+        # start point doesn't count: no new fix means the end is unknown.
+        points = self.db.q(
+            "SELECT lat, lon FROM trip_points WHERE trip_id = ? ORDER BY ts", trip_id)
+        if r["start_lat"] is not None:
+            points = points[1:]
+        end = points[-1] if points else None
+        values |= {"end_lat": end["lat"] if end else None, "end_lon": end["lon"] if end else None}
         self.db.update("trips", trip_id, values)
         return dict(r) | values
 
     def _patch_last_trip(self, o: Obs, prev: Obs | None) -> None:
         """Apply reports that arrive just after a trip closed (final location, SoC, odometer)."""
         last = self.s["last_trip"]
-        if not last or o.t - last["ended_at"] > LATE_PATCH_S or not prev:
+        if not last or not prev:
+            return
+        if o.t - last["ended_at"] > LATE_PATCH_S:
+            # A trip that ended with no position gets the first fix the car
+            # reports while still parked there, however late.
+            if last.get("no_end") and self._position(o) != (None, None):
+                self._trip_point(last["id"], o)
+                self.db.update("trips", last["id"], {"end_place": None, "temp_c": None})
+                self._finalize_trip(last["id"], last)
+                last["no_end"] = False
             return
         changed = (
             (o.lat, o.lon) != (prev.lat, prev.lon)
@@ -417,7 +443,8 @@ class Detector:
         self._trip_point(last["id"], o)
         if (o.lat, o.lon) != (prev.lat, prev.lon):
             self.db.update("trips", last["id"], {"end_place": None})
-        self._finalize_trip(last["id"], last)
+        row = self._finalize_trip(last["id"], last)
+        last["no_end"] = bool(row) and row["end_lat"] is None
 
     # -- charging ----------------------------------------------------------
 
@@ -438,10 +465,11 @@ class Detector:
                 soc_start = o.soc
                 if prev and prev.soc is not None and o.soc is not None and prev.soc <= o.soc:
                     soc_start = prev.soc
-                place = self._place_for(o.lat, o.lon)
+                lat, lon = self._position(o)
+                place = self._place_for(lat, lon)
                 charge_id = self.db.insert("charges", {
                     "started_at": started, "soc_start": soc_start, "soc_end": o.soc,
-                    "lat": o.lat, "lon": o.lon, "odometer_km": o.odometer_km,
+                    "lat": lat, "lon": lon, "odometer_km": o.odometer_km,
                     "place_id": place["id"] if place else None,
                     "place_name": place["name"] if place else None,
                     "price_per_kwh": (
@@ -571,7 +599,7 @@ def rebuild(db: DB, capacity_kwh: Callable[[], float | None]) -> dict[str, int]:
     # Enrichment results are expensive to look up again, so keep them by time.
     places = {
         round(r["started_at"]): dict(r)
-        for r in db.q("SELECT started_at, start_place, end_place, temp_c FROM trips")
+        for r in db.q("SELECT started_at, start_place, end_place, temp_c, start_lat, start_lon, end_lat, end_lon FROM trips")
     }
     kept_events = [
         dict(r) for r in db.q(
@@ -591,12 +619,17 @@ def rebuild(db: DB, capacity_kwh: Callable[[], float | None]) -> dict[str, int]:
 
         for e in kept_events:
             db.insert("events", e)
-        for r in db.q("SELECT id, started_at FROM trips"):
+        for r in db.q("SELECT id, started_at, start_lat, start_lon, end_lat, end_lon FROM trips"):
             old = places.get(round(r["started_at"]))
             if old:
-                db.update("trips", r["id"], {
-                    k: old[k] for k in ("start_place", "end_place", "temp_c")
-                })
+                # An address is only kept if the position it was looked up for is unchanged.
+                same = lambda end: (r[f"{end}_lat"], r[f"{end}_lon"]) == (old[f"{end}_lat"], old[f"{end}_lon"])
+                values = {"temp_c": old["temp_c"]} if same("start") and same("end") else {}
+                if same("start"):
+                    values["start_place"] = old["start_place"]
+                if same("end"):
+                    values["end_place"] = old["end_place"]
+                db.update("trips", r["id"], values)
         for old in keep_trips:
             match = _overlapping(db, "trips", old)
             if match:

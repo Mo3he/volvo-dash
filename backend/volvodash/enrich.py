@@ -76,7 +76,7 @@ class Enricher:
                 "SELECT * FROM trips WHERE ended_at IS NOT NULL AND ("
                 " (start_place IS NULL AND start_lat IS NOT NULL) OR"
                 " (end_place IS NULL AND end_lat IS NOT NULL) OR"
-                " (temp_c IS NULL AND end_lat IS NOT NULL AND ended_at > ?))"
+                " (temp_c IS NULL AND COALESCE(end_lat, start_lat) IS NOT NULL AND ended_at > ?))"
                 " ORDER BY started_at DESC LIMIT ?",
                 # Open-Meteo's forecast endpoint only reaches about three months back.
                 now - 80 * 86400, limit,
@@ -86,9 +86,11 @@ class Enricher:
                     values["start_place"] = await self._place(r["start_lat"], r["start_lon"]) or ""
                 if r["end_place"] is None and r["end_lat"] is not None:
                     values["end_place"] = await self._place(r["end_lat"], r["end_lon"]) or ""
-                if r["temp_c"] is None and r["end_lat"] is not None:
+                # No position at the end (no GPS where it parked): the start is close enough.
+                lat, lon = (r["end_lat"], r["end_lon"]) if r["end_lat"] is not None else (r["start_lat"], r["start_lon"])
+                if r["temp_c"] is None and lat is not None:
                     values["temp_c"] = await self.lookups.temperature(
-                        r["end_lat"], r["end_lon"], (r["started_at"] + r["ended_at"]) / 2
+                        lat, lon, (r["started_at"] + r["ended_at"]) / 2
                     )
                 self.db.update("trips", r["id"], values)
                 done += 1

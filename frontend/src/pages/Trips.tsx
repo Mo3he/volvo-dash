@@ -5,9 +5,13 @@ import { day, dayKey, dist, duration, efficiency, kwh, pct, speed, temp, time } 
 
 const place = (name: string | null) => name || 'Unknown place'
 
+// No position at all means the car had no GPS there (an underground car park, say).
+const spot = (t: Trip, at: 'start' | 'end') =>
+  t[`${at}_lat`] == null ? 'no GPS' : place(t[`${at}_place`])
+
 function route(t: Trip): string {
   if (t.start_place && t.start_place === t.end_place) return `${t.start_place}, round trip`
-  return `${place(t.start_place)} → ${place(t.end_place)}`
+  return `${spot(t, 'start')} → ${spot(t, 'end')}`
 }
 
 export function Trips() {
@@ -111,6 +115,11 @@ function TripDetail({ id }: { id: number }) {
         </p>
       ) : null}
       {markers.length > 0 && <MapView path={path} markers={markers} dashed={sparse} />}
+      {(t.start_lat == null || t.end_lat == null) && (
+        <p className="hint">
+          The car had no GPS where it was parked at the {t.end_lat == null ? (t.start_lat == null ? "start and end" : "end") : "start"} of this trip (an underground car park, for example), so that place is unknown.
+        </p>
+      )}
       {markers.length > 0 && sparse && (
         <p className="hint">The car did not report its position along the way, so only the start and end are shown.</p>
       )}

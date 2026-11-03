@@ -64,6 +64,9 @@ class SimCar:
         self.where = "home"
         self.lat, self.lon = SPOTS["home"][1:]
         self.loc_ts = start
+        # Parking spots with no GPS (underground): the car keeps its last fix.
+        self.no_gps: set[str] = set()
+        self.fix = (self.lat, self.lon, start)
         self.engine = "STOPPED"
         self.engine_ts = start
         self.parked_since = start - 6 * 3600
@@ -189,7 +192,7 @@ class SimCar:
         self.drive = {
             **step, "done": 0.0, "consumption": consumption, "started": self.t,
             "soc_start": self.soc,
-            "from": (self.lat, self.lon), "dest": (lat, lon),
+            "from": SPOTS[self.where][1:], "dest": (lat, lon),
             "bend": self.rng.uniform(-0.12, 0.12),
         }
         self.engine, self.engine_ts = "RUNNING", self.t
@@ -221,6 +224,9 @@ class SimCar:
             })
             self.where = d["to"]
             self.lat, self.lon = d["dest"]
+            if self.where in self.no_gps:
+                self.lat, self.lon, self.loc_ts = self.fix
+            self.fix = (self.lat, self.lon, self.loc_ts)
             self.drive = None
             self.engine, self.engine_ts = "STOPPED", self.t
             self.parked_since = self.t

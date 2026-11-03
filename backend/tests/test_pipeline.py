@@ -235,3 +235,28 @@ def test_driving_after_each_charge(rig):
             # The simulator's car does 81.6 kWh / ~17-25 kWh/100 km.
             assert 280 < a["full_range_km"] < 520
     assert any(a["full_range_km"] for a in afters)
+
+
+def test_parking_without_gps_leaves_the_end_unknown(rig):
+    # Underground at work: the car keeps serving its last fix, from home.
+    r = rig("ex40")
+    r.car.no_gps = {"work"}
+    r.run(14)
+    drives = r.car.truth["drives"]
+    trips = r.trips()
+    checked = {"to_work": 0, "from_work": 0, "elsewhere": 0}
+    for t in trips:
+        i = min(range(len(drives)), key=lambda i: abs(drives[i]["end"] - t["ended_at"]))
+        to = drives[i]["to"]
+        came_from = drives[j]["to"] if (j := max(
+            (k for k in range(i + 1) if drives[k]["start"] <= t["started_at"] + 90), default=0) - 1) >= 0 else "home"
+        if to == "work":
+            assert t["end_lat"] is None and t["end_place"] is None
+            checked["to_work"] += 1
+        else:
+            assert (round(t["end_lat"], 4), round(t["end_lon"], 4)) == tuple(round(x, 4) for x in SPOTS[to][1:])
+            checked["elsewhere"] += 1
+        if came_from == "work":
+            assert t["start_lat"] is None
+            checked["from_work"] += 1
+    assert all(checked.values()), checked
