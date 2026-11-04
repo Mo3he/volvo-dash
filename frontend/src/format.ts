@@ -28,6 +28,11 @@ export function dist(km: number | null | undefined, digits = 1): string {
   return `${num(units === 'mi' ? km / MILE : km, digits)} ${units}`
 }
 
+/** A distance typed in the user's units, in km. */
+export function kmFrom(v: number): number {
+  return units === 'mi' ? v * MILE : v
+}
+
 export function distValue(km: number): number {
   return units === 'mi' ? km / MILE : km
 }
@@ -84,6 +89,11 @@ const fmt = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(undefi
 
 export function time(ts: number | null | undefined): string {
   return ts == null ? dash : fmt({ hour: '2-digit', minute: '2-digit' }).format(ts * 1000)
+}
+
+/** "HH:MM", 24-hour, for a time input. */
+export function clock(ts: number): string {
+  return fmt({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ts * 1000)
 }
 
 export function day(ts: number): string {

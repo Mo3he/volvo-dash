@@ -147,6 +147,13 @@ MIGRATIONS = [
     ALTER TABLE trips ADD COLUMN start_manual INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE trips ADD COLUMN end_manual INTEGER NOT NULL DEFAULT 0;
     """,
+    """
+    -- End time and distance entered by hand, where the car's own report was late or missing.
+    ALTER TABLE trips ADD COLUMN ended_override REAL;
+    ALTER TABLE trips ADD COLUMN distance_override REAL;
+    -- The end the car reported, kept so a hand-entered end can be undone.
+    ALTER TABLE trips ADD COLUMN ended_car REAL;
+    """,
 ]
 
 

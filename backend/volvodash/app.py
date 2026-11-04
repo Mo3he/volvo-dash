@@ -372,7 +372,36 @@ async def edit_trip(trip_id: int, request: Request) -> dict[str, Any]:
     for end in ("start", "end"):
         if end in body:
             _set_trip_position(row, end, body[end])
+    if "ended_at" in body or "distance_km" in body:
+        _set_trip_end(row, body)
     return await trip(trip_id)
+
+
+def _set_trip_end(row: Any, body: dict[str, Any]) -> None:
+    """Correct a trip's end time or distance by hand (None goes back to the car's)."""
+    if row["ended_at"] is None:
+        raise HTTPException(400, "This trip is still going.")
+    values: dict[str, Any] = {}
+    if "ended_at" in body:
+        ended = _number(body["ended_at"]) if body["ended_at"] is not None else None
+        if ended is not None:
+            nxt = ctx.db.one(
+                "SELECT started_at FROM trips WHERE started_at > ? ORDER BY started_at LIMIT 1",
+                row["started_at"])
+            if ended <= row["started_at"]:
+                raise HTTPException(400, "The end has to be after the start.")
+            if nxt and ended > nxt["started_at"]:
+                raise HTTPException(400, "The end can't be after the next trip started.")
+        values["ended_override"] = ended
+        values["ended_car"] = row["ended_car"] or row["ended_at"]
+    if "distance_km" in body:
+        km = _number(body["distance_km"]) if body["distance_km"] is not None else None
+        if km is not None and not 0 < km < 2000:
+            raise HTTPException(400, "Enter a distance in kilometres.")
+        values["distance_override"] = km
+    ctx.db.update("trips", row["id"], values)
+    ctx.collector.detector.refinalize(row["id"])
+    ctx.collector.broadcast()
 
 
 def _set_trip_position(row: Any, end: str, loc: dict[str, Any] | None) -> None:

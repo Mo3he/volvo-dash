@@ -246,6 +246,23 @@ class Detector:
             return
         self._close_trip(trip, end, o)
 
+    def refinalize(self, trip_id: int) -> dict[str, Any] | None:
+        """Recompute a closed trip after the user corrected it by hand."""
+        r = self.db.one("SELECT * FROM trips WHERE id = ?", trip_id)
+        if r is None or r["ended_at"] is None:
+            return None
+        row = self._finalize_trip(trip_id, {
+            "saw_signal": not r["start_estimated"], "moves": 2,
+            "speed_hint": r["avg_speed_kmh"], "min_start": None,
+        })
+        last = self.s["last_trip"]
+        if row and last and last["id"] == trip_id:
+            last["ended_at"] = row["ended_at"]
+            if r["distance_override"] is not None:
+                last["no_distance"] = False
+            self.db.set("detector_state", self.s)
+        return row
+
     def _settle_distance(self, o: Obs) -> bool:
         """Give a trip still waiting for its distance the first odometer reading
         the car takes after it set off. Returns True if it did."""
@@ -358,7 +375,7 @@ class Detector:
 
     def _close_trip(self, trip: dict[str, Any], ended_at: float, o: Obs) -> None:
         self.s["trip"] = None
-        self.db.update("trips", trip["id"], {"ended_at": ended_at})
+        self.db.update("trips", trip["id"], {"ended_at": ended_at, "ended_car": ended_at})
         row = self._finalize_trip(trip["id"], trip)
         if not row:
             return
@@ -396,6 +413,8 @@ class Detector:
         else:
             close = [c for c in candidates if abs(c - d_odo) <= 1.5]
             distance = min(close, key=lambda c: abs(c - d_odo)) if close else d_odo
+        if r["distance_override"] is not None:
+            distance = r["distance_override"]
 
         waiting = not distance or distance <= 0
         if waiting and not (trip["saw_signal"] and not trip.get("settled")):
@@ -418,7 +437,7 @@ class Detector:
             self.db.update("trips", trip_id, values)
             return dict(r) | values
 
-        ended = r["ended_at"]
+        ended = r["ended_override"] or r["ended_car"] or r["ended_at"]
         started = min(r["started_at"], ended)
         estimated = 0
         if not trip["saw_signal"] and trip["moves"] <= 1:
@@ -449,6 +468,7 @@ class Detector:
         hours = (ended - started) / 3600
         values = {
             "started_at": started,
+            "ended_at": ended,
             "start_estimated": estimated,
             "distance_km": round(distance, 1),
             "energy_kwh": round(energy, 2) if energy is not None else None,
@@ -655,7 +675,8 @@ def rebuild(db: DB, capacity_kwh: Callable[[], float | None]) -> dict[str, int]:
     rebuilt row that overlaps the old one most.
     """
     keep_trips = [dict(r) for r in db.q(
-        "SELECT * FROM trips WHERE note IS NOT NULL OR start_manual = 1 OR end_manual = 1")]
+        "SELECT * FROM trips WHERE note IS NOT NULL OR start_manual = 1 OR end_manual = 1 "
+        "OR ended_override IS NOT NULL OR distance_override IS NOT NULL")]
     keep_charges = [
         dict(r) for r in db.q(
             "SELECT * FROM charges WHERE note IS NOT NULL OR cost_override IS NOT NULL "
@@ -705,7 +726,10 @@ def rebuild(db: DB, capacity_kwh: Callable[[], float | None]) -> dict[str, int]:
                 for end in ("start", "end"):
                     if old[f"{end}_manual"] and new[f"{end}_lat"] is None:
                         values |= {f"{end}_{k}": old[f"{end}_{k}"] for k in ("lat", "lon", "place", "manual")}
-                db.update("trips", match, values)
+                overrides = {k: old[k] for k in ("ended_override", "distance_override") if old[k] is not None}
+                db.update("trips", match, values | overrides)
+                if overrides:
+                    detector.refinalize(match)
         for old in keep_charges:
             match = _overlapping(db, "charges", old)
             if match:

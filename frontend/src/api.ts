@@ -92,6 +92,11 @@ export interface Trip {
   end_place: string | null
   start_manual: number
   end_manual: number
+  /** Set when the user corrected the end time or distance by hand. */
+  ended_override: number | null
+  distance_override: number | null
+  /** The end the car reported. */
+  ended_car: number | null
   temp_c: number | null
   note: string | null
   points?: { ts: number; lat: number; lon: number }[]

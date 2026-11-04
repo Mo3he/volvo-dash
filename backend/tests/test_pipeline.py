@@ -2,7 +2,7 @@
 
 import pytest
 
-from volvodash.detect import rebuild
+from volvodash.detect import Detector, rebuild
 from volvodash.sim import CAPACITY_KWH, SPOTS
 
 
@@ -266,7 +266,7 @@ def test_position_entered_by_hand_for_a_car_park_without_gps(rig):
     from fastapi import HTTPException
 
     from volvodash import app as webapp
-    from volvodash.detect import rebuild
+    from volvodash.detect import Detector, rebuild
 
     r = rig("ex40")
     r.car.no_gps = {"work"}
@@ -330,3 +330,27 @@ def test_trip_waits_for_its_distance_where_there_is_no_signal(rig):
         t = min(trips, key=lambda t: abs(t["ended_at"] - d["end"]))
         assert abs(t["ended_at"] - d["end"]) < 300
         assert t["distance_km"] == pytest.approx(d["km"], abs=1.5)
+
+
+def test_end_and_distance_entered_by_hand_survive_and_undo(rig):
+    r = rig("ex40")
+    r.run(2)
+    det = r.collector.detector
+    t = r.trips()[1]
+    car_end, car_km = t["ended_at"], t["distance_km"]
+    r.db.update("trips", t["id"], {"ended_override": car_end - 600, "ended_car": car_end,
+                                   "distance_override": 12.3})
+    det.refinalize(t["id"])
+    got = r.db.one("SELECT * FROM trips WHERE id = ?", t["id"])
+    assert got["ended_at"] == car_end - 600 and got["distance_km"] == 12.3
+    assert got["avg_speed_kmh"] == pytest.approx(12.3 / ((car_end - 600 - got["started_at"]) / 3600), abs=0.1)
+
+    rebuild(r.db, r.collector.capacity)
+    got = r.db.one("SELECT * FROM trips WHERE started_at = ?", got["started_at"])
+    assert got["ended_at"] == car_end - 600 and got["distance_km"] == 12.3
+
+    r.db.update("trips", got["id"], {"ended_override": None, "distance_override": None})
+    det = Detector(r.db, r.collector.capacity)  # rebuild replaced the detector's state
+    det.refinalize(got["id"])
+    got = r.db.one("SELECT * FROM trips WHERE id = ?", got["id"])
+    assert got["ended_at"] == car_end and got["distance_km"] == car_km

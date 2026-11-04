@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { api, useLive, type Trip } from '../api'
 import { Empty, Icon, MapView, PickMap, Tile, split, useAction, usePeriod } from '../components'
-import { day, dayKey, dist, duration, efficiency, kwh, pct, speed, temp, time } from '../format'
+import { clock, day, dayKey, dist, distUnit, distValue, duration, efficiency, kmFrom, kwh, pct, speed, temp, time } from '../format'
 
 const place = (name: string | null) => name || 'Unknown place'
 
@@ -124,6 +124,7 @@ function TripDetail({ id, onChanged }: { id: number; onChanged: () => void }) {
       {(['start', 'end'] as const).map((at) => (t[`${at}_lat`] == null || !!t[`${at}_manual`]) && (
         <PositionFix key={at} t={t} at={at} onSaved={() => { reload(); onChanged() }} />
       ))}
+      <EndFix t={t} onSaved={() => { reload(); onChanged() }} />
       {markers.length > 0 && sparse && (
         <p className="hint">The car did not report its position along the way, so only the start and end are shown.</p>
       )}
@@ -213,6 +214,90 @@ function PositionFix({ t, at, onSaved }: { t: Trip; at: 'start' | 'end'; onSaved
         </div>
       )}
       {!open && note}
+    </div>
+  )
+}
+
+
+/** Correct the end time or distance where the car's report was late or missing. */
+function EndFix({ t, onSaved }: { t: Trip; onSaved: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [end, setEnd] = useState('')
+  const [km, setKm] = useState('')
+  const { busy, run, note } = useAction()
+  const carEnd = t.ended_car ?? t.ended_at
+  const edited = t.ended_override != null || t.distance_override != null
+
+  const start = () => {
+    setEnd(clock(t.ended_at))
+    setKm(t.distance_km != null ? String(Math.round(distValue(t.distance_km) * 10) / 10) : '')
+    setOpen(true)
+  }
+
+  const save = (body: Record<string, number | null>) =>
+    run(async () => {
+      await api(`/trips/${t.id}`, 'PATCH', body)
+      setOpen(false)
+      onSaved()
+    })
+
+  const submit = () => {
+    const body: Record<string, number | null> = {}
+    if (end && end !== clock(t.ended_at)) {
+      // Shift the car's end by the difference on the clock, so time zones take care of themselves.
+      const mins = (s: string) => { const [h, m] = s.split(':').map(Number); return h * 60 + m }
+      let delta = mins(end) - mins(clock(carEnd))
+      if (delta > 720) delta -= 1440
+      if (delta < -720) delta += 1440
+      body.ended_at = delta === 0 ? null : carEnd + delta * 60
+    }
+    const v = km.trim() === '' ? null : Number(km.replace(',', '.'))
+    if (v !== null && !(v > 0)) return run(async () => { throw new Error('Enter a distance, or leave it empty.') })
+    const was = t.distance_km != null ? Math.round(distValue(t.distance_km) * 10) / 10 : null
+    if (v !== was) body.distance_km = v === null ? null : kmFrom(v)
+    if (!Object.keys(body).length) return setOpen(false)
+    save(body)
+  }
+
+  if (!open) {
+    return (
+      <div className="row">
+        {edited && (
+          <p className="hint grow" style={{ margin: 0 }}>
+            {[t.ended_override != null && 'end time', t.distance_override != null && 'distance'].filter(Boolean).join(' and ').replace(/^./, (c) => c.toUpperCase())} entered by hand.
+          </p>
+        )}
+        <button className="btn plain" onClick={start}>Correct end time or distance</button>
+        {edited && (
+          <button className="btn plain" disabled={busy} onClick={() => save({ ended_at: null, distance_km: null })}>
+            Use the car’s figures
+          </button>
+        )}
+        {note}
+      </div>
+    )
+  }
+  return (
+    <div className="stack">
+      <p className="hint" style={{ margin: 0 }}>
+        Where the car had no signal it can report a trip late or without its distance. The Volvo app’s trip log usually has the right figures.
+      </p>
+      <div className="row">
+        <label className="field">
+          Ended at
+          <input type="time" value={end} style={{ width: 130 }} onChange={(e) => setEnd(e.target.value)} />
+        </label>
+        <label className="field">
+          Distance, {distUnit()}
+          <input type="text" inputMode="decimal" value={km} placeholder="Not reported" style={{ width: 120 }}
+            onChange={(e) => setKm(e.target.value)} />
+        </label>
+      </div>
+      <div className="row">
+        <button className="btn primary" disabled={busy} onClick={submit}>Save</button>
+        <button className="btn" onClick={() => setOpen(false)}>Cancel</button>
+        {note}
+      </div>
     </div>
   )
 }
