@@ -60,7 +60,7 @@ export function Trips() {
               <div key={g.key}>
                 <div className="day">
                   <span>{day(g.trips[0].started_at)}</span>
-                  <span className="nums">{dist(g.trips.reduce((sum, t) => sum + t.distance_km, 0))}</span>
+                  <span className="nums">{dist(g.trips.reduce((sum, t) => sum + (t.distance_km ?? 0), 0))}</span>
                 </div>
                 {g.trips.map((t) => (
                   <div className="item" key={t.id}>
@@ -70,7 +70,7 @@ export function Trips() {
                         {t.start_estimated ? '~' : ''}{time(t.started_at)} – {time(t.ended_at)}
                       </span>
                       <span className="title" title={route(t)}>{route(t)}</span>
-                      <span className="right nums"><strong>{dist(t.distance_km)}</strong></span>
+                      <span className="right nums">{t.distance_km == null ? <span className="soft">Waiting for car</span> : <strong>{dist(t.distance_km)}</strong>}</span>
                       <span className="right nums soft hide-s">{duration(t.ended_at - t.started_at)}</span>
                       <span className="right nums soft hide-s">{kwh(t.energy_kwh)}</span>
                     </button>
@@ -102,7 +102,7 @@ function TripDetail({ id, onChanged }: { id: number; onChanged: () => void }) {
   return (
     <div className="item-body">
       <div className="facts">
-        <div><dt>Distance</dt><dd>{dist(t.distance_km)}</dd></div>
+        <div><dt>Distance</dt><dd>{t.distance_km == null ? 'Not reported yet' : dist(t.distance_km)}</dd></div>
         <div><dt>Duration</dt><dd>{duration(t.ended_at - t.started_at)}</dd></div>
         <div><dt>Average speed</dt><dd>{speed(t.avg_speed_kmh)}</dd></div>
         <div><dt>Battery</dt><dd>{pct(t.soc_start)} → {pct(t.soc_end)}</dd></div>
@@ -110,6 +110,11 @@ function TripDetail({ id, onChanged }: { id: number; onChanged: () => void }) {
         <div><dt>Consumption</dt><dd>{t.efficiency ? efficiency(t.efficiency) : 'Too short to measure'}</dd></div>
         <div><dt>Outside</dt><dd>{temp(t.temp_c)}</dd></div>
       </div>
+      {t.distance_km == null ? (
+        <p className="hint">
+          The car hasn’t sent this trip’s distance yet. It usually does when it parks, but where there is no signal (an underground car park, say) it waits until it’s back online.
+        </p>
+      ) : null}
       {t.start_estimated ? (
         <p className="hint">
           The car only reported this trip after it ended, so the start time is estimated from distance and average speed.

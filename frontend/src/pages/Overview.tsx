@@ -168,7 +168,7 @@ function LastTrip({ s }: { s: Status }) {
       label="Last trip"
       value={d.value}
       unit={d.unit}
-      sub={<><div>{day(t.ended_at)}, {time(t.ended_at)}</div><div>{t.efficiency ? efficiency(t.efficiency) : duration(t.ended_at - t.started_at)}</div></>}
+      sub={<><div>{day(t.ended_at)}, {time(t.ended_at)}</div><div>{t.distance_km == null ? 'Distance not reported yet' : t.efficiency ? efficiency(t.efficiency) : duration(t.ended_at - t.started_at)}</div></>}
     />
   )
 }
@@ -265,7 +265,8 @@ function Checks({ s }: { s: Status }) {
 
 const EVENT_TEXT: Record<string, (e: any) => string> = {
   trip_started: () => 'Trip started',
-  trip_ended: (e) => `Trip ended, ${dist(e.distance_km)}`,
+  trip_ended: (e) => e.distance_km == null ? 'Trip ended, distance not reported yet' : `Trip ended, ${dist(e.distance_km)}`,
+  trip_distance: (e) => `Car reported the trip's distance, ${dist(e.distance_km)}`,
   charge_started: (e) => `Charging started at ${pct(e.soc)}`,
   charge_ended: (e) => `Charging ended at ${pct(e.soc)}${e.energy_kwh ? `, ${kwh(e.energy_kwh)}` : ''}`,
   plugged: () => 'Plugged in',

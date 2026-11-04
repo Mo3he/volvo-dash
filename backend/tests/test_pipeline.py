@@ -314,3 +314,19 @@ def test_position_entered_by_hand_for_a_car_park_without_gps(rig):
     gps = r.db.one("SELECT * FROM trips WHERE end_lat IS NOT NULL AND end_manual = 0 LIMIT 1")
     with pytest.raises(HTTPException):
         webapp._set_trip_position(gps, "end", garage)
+
+
+def test_trip_waits_for_its_distance_where_there_is_no_signal(rig):
+    # Underground with no signal: the car says "stopped" but its odometer only
+    # catches up when it sets off again. The trip must not be thrown away.
+    r = rig("ex40")
+    r.car.no_gps = {"work"}
+    r.car.no_signal = {"work"}
+    r.run(14)
+    trips = r.trips()
+    to_work = [d for d in r.car.truth["drives"] if d["to"] == "work"]
+    assert to_work
+    for d in to_work:
+        t = min(trips, key=lambda t: abs(t["ended_at"] - d["end"]))
+        assert abs(t["ended_at"] - d["end"]) < 300
+        assert t["distance_km"] == pytest.approx(d["km"], abs=1.5)

@@ -66,6 +66,9 @@ class SimCar:
         self.loc_ts = start
         # Parking spots with no GPS (underground): the car keeps its last fix.
         self.no_gps: set[str] = set()
+        # Parking spots with no signal at all: the switch-off report of odometer,
+        # trip statistics and position never arrives; the next start brings it.
+        self.no_signal: set[str] = set()
         self.fix = (self.lat, self.lon, start)
         self.engine = "STOPPED"
         self.engine_ts = start
@@ -197,6 +200,7 @@ class SimCar:
         }
         self.engine, self.engine_ts = "RUNNING", self.t
         self.locked = False
+        self.frozen = None  # back in signal: the start report carries fresh readings
         if self.mode != "sparse":
             self._report()
 
@@ -360,7 +364,10 @@ class SimCar:
         if self.mode != "ex40":
             return
         if not self.drive:
-            self.frozen = None
+            if self.where in self.no_signal and self.frozen is not None:
+                self.rep.update(self.frozen)
+            else:
+                self.frozen = None
         elif self.frozen is None:
             self.frozen = {k: self.rep[k] for k in ("odometer", "statistics", "location")}
         else:

@@ -76,7 +76,8 @@ export interface Trip {
   started_at: number
   ended_at: number
   start_estimated: number
-  distance_km: number
+  /** Null while the car hasn't reported how far it went. */
+  distance_km: number | null
   soc_start: number | null
   soc_end: number | null
   energy_kwh: number | null

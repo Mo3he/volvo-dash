@@ -198,6 +198,10 @@ class Detector:
         )
         trip = self.s["trip"]
 
+        if not trip and self._settle_distance(o):
+            # That odometer step belonged to the last trip, not a new one.
+            moved = False
+
         if not trip:
             # A running "engine" while plugged in is preconditioning, not a drive.
             if moved or (driving and o.connection != "CONNECTED"):
@@ -241,6 +245,33 @@ class Detector:
         else:
             return
         self._close_trip(trip, end, o)
+
+    def _settle_distance(self, o: Obs) -> bool:
+        """Give a trip still waiting for its distance the first odometer reading
+        the car takes after it set off. Returns True if it did."""
+        last = self.s["last_trip"]
+        if not last or not last.get("no_distance") or not o.odometer_ts:
+            return False
+        # The stale reading the trip already has was taken as it set off.
+        if o.odometer_km is None or o.odometer_ts <= last["started_at"] + CLOCK_SKEW_S:
+            return False
+        last["no_distance"] = False
+        self.db.update("trips", last["id"], {
+            "odo_end": o.odometer_km, "ta_end": o.trip_auto_km,
+            "cons_end": o.avg_consumption, "tm_end": o.trip_manual_km,
+        })
+        row = self._finalize_trip(last["id"], last | {"settled": True})
+        if row is None:
+            # The odometer says the car never moved after all.
+            self.s["last_trip"] = None
+        else:
+            self._event(o.odometer_ts, "trip_distance", trip_id=last["id"],
+                        distance_km=row["distance_km"])
+        # The next trip starts from here, not from the stale reading.
+        if self.s["park"]:
+            self.s["park"] |= {"odo": o.odometer_km, "ta": o.trip_auto_km,
+                               "cons": o.avg_consumption, "tm": o.trip_manual_km}
+        return True
 
     def _open_trip(self, o: Obs, prev: Obs | None, driving: bool) -> dict[str, Any]:
         park = self.s["park"] or {}
@@ -336,6 +367,7 @@ class Detector:
             "saw_signal": trip["saw_signal"], "moves": trip["moves"],
             "min_start": trip["min_start"], "speed_hint": trip.get("speed_hint"),
             "charged": False, "no_end": row["end_lat"] is None,
+            "no_distance": row["distance_km"] is None,
         }
         self._event(
             ended_at, "trip_ended", trip_id=trip["id"],
@@ -365,10 +397,26 @@ class Detector:
             close = [c for c in candidates if abs(c - d_odo) <= 1.5]
             distance = min(close, key=lambda c: abs(c - d_odo)) if close else d_odo
 
-        if not distance or distance <= 0:
+        waiting = not distance or distance <= 0
+        if waiting and not (trip["saw_signal"] and not trip.get("settled")):
             self.db.x("DELETE FROM trip_points WHERE trip_id = ?", trip_id)
             self.db.x("DELETE FROM trips WHERE id = ?", trip_id)
             return None
+        if waiting:
+            # The car said it was driving, but its odometer hasn't caught up: the
+            # switch-off report can go missing where there is no signal. Keep the
+            # trip; the next odometer report settles it (_settle_distance).
+            used = (
+                r["soc_start"] - r["soc_end"]
+                if r["soc_start"] is not None and r["soc_end"] is not None else None
+            )
+            values = {
+                "distance_km": None, "efficiency": None, "avg_speed_kmh": None,
+                "energy_kwh": round(max(used, 0) / 100 * self.capacity(), 2) if used is not None else None,
+                "energy_source": "soc" if used is not None else None,
+            }
+            self.db.update("trips", trip_id, values)
+            return dict(r) | values
 
         ended = r["ended_at"]
         started = min(r["started_at"], ended)
