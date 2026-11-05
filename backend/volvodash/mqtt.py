@@ -62,6 +62,7 @@ SENSORS: list[tuple[str, str, str | None, str | None, str | None, str | None]] =
     ("since_charge_battery_used", "Battery used since last charge", "%", None, None, "mdi:battery-minus"),
     ("full_charge_range", "Range on a full charge", "km", "distance", None, "mdi:map-marker-radius"),
     ("api_calls_today", "Volvo API calls today", None, None, "measurement", "mdi:api"),
+    ("sign_in_valid_until", "Volvo sign-in valid until", None, "timestamp", None, "mdi:account-clock"),
 ]
 
 # key, name, device_class
@@ -158,6 +159,7 @@ def state_payload(db: DB, collector: Collector) -> dict[str, Any]:
         "warning": bool(warnings),
         "warnings": warnings,
         "sign_in_needed": bool(db.get("volvo_auth_error")),
+        "sign_in_valid_until": _iso(until) if (until := collector.client.sign_in_until()) else None,
     }
 
 
@@ -204,7 +206,7 @@ def discovery(db: DB, prefix: str, discovery_prefix: str) -> dict[str, dict[str,
             cfg["icon"] = icon
         if key == "last_charge_cost":
             cfg["unit_of_measurement"] = get_settings(db)["currency"]
-        if key in ("api_calls_today", "activity", "last_reported"):
+        if key in ("api_calls_today", "activity", "last_reported", "sign_in_valid_until"):
             cfg["entity_category"] = "diagnostic"
         out[f"{discovery_prefix}/sensor/{dev}/{key}/config"] = cfg
 

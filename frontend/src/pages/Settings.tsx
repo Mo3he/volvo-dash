@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, useLive, type Status } from '../api'
 import { PickMap, useAction } from '../components'
-import { ago, currencySymbol, dateTime } from '../format'
+import { ago, currencySymbol, dateTime, day, now } from '../format'
 
 export function Settings({ status }: { status: Status }) {
   return (
@@ -32,6 +32,7 @@ interface VolvoView {
   scopes: string[]
   consent_at: number | null
   auth_error: { at: number; message: string } | null
+  sign_in_until: number | null
   sim: string | null
 }
 
@@ -127,13 +128,16 @@ function Volvo({ status }: { status: Status }) {
           <div className="kv" style={{ maxWidth: 520 }}>
             <span>Car</span><span>{[status.vehicle.model, status.vehicle.year].filter(Boolean).join(' ')} (VIN …{status.vehicle.vin_tail})</span>
             <span>Signed in</span><span>{dateTime(v.consent_at)}</span>
+            {v.sign_in_until && (<><span>Sign-in valid until</span><span>{day(v.sign_in_until)}{v.sign_in_until - now() < 14 * 86400 ? ' (sign in again soon)' : ''}</span></>)}
             <span>Last check</span><span>{ago(c.last_poll)}</span>
             <span>API calls today</span><span>{c.calls_today.toLocaleString()} of {c.daily_limit.toLocaleString()}</span>
             {c.unavailable.length > 0 && (<><span>Not available for this car</span><span>{c.unavailable.join(', ')}</span></>)}
           </div>
           {c.paused && <p className="error">Today’s API allowance is used up. Polling resumes at midnight UTC.</p>}
           <p className="hint">
-            Volvo keeps a sign-in valid for up to six months as long as it keeps being refreshed, which the dashboard does on its own. If it lapses or is revoked, this page and the notification webhook will tell you, and signing in again takes a few seconds.
+            The dashboard renews the sign-in every few minutes, and each renewal normally pushes the date above further out. If Volvo
+            ever stops extending it, you get a warning here, in Home Assistant and on the notification webhook two weeks before it runs out,
+            so you can sign in again without missing anything.
           </p>
           <div className="row">
             <button className="btn primary" disabled={busy} onClick={signIn}>Sign in again</button>
@@ -222,7 +226,7 @@ const EVENTS = [
   ['trip_ended', 'Trip ended'],
   ['charge_started', 'Charging started'],
   ['charge_ended', 'Charging ended'],
-  ['needs_reauth', 'Volvo sign-in expired'],
+  ['needs_reauth', 'Volvo sign-in running out or expired'],
 ] as const
 
 function General({ capacity, mqtt }: { capacity: number | null; mqtt: Status['connection']['mqtt'] }) {

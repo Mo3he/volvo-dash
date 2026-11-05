@@ -69,6 +69,8 @@ class SimCar:
         # Parking spots with no signal at all: the switch-off report of odometer,
         # trip statistics and position never arrives; the next start brings it.
         self.no_signal: set[str] = set()
+        # A hard limit on the sign-in, however often it is refreshed.
+        self.sign_in_deadline: float | None = None
         self.fix = (self.lat, self.lon, start)
         self.engine = "STOPPED"
         self.engine_ts = start
@@ -433,9 +435,13 @@ def transport(car: SimCar, clock: Clock | Callable[[], Clock]) -> httpx.MockTran
             tokens["refresh"] = f"sim-refresh-{tokens['n']}"
             tokens["access"] = f"sim-access-{tokens['n']}"
             tokens["expires"] = current().now() + 1800
+            # Like Volvo's new service: 90 days from each refresh, unless capped.
+            refresh_in = 90 * 86400
+            if car.sign_in_deadline:
+                refresh_in = min(refresh_in, int(car.sign_in_deadline - current().now()))
             return httpx.Response(200, json={
                 "access_token": tokens["access"], "refresh_token": tokens["refresh"],
-                "token_type": "Bearer", "expires_in": 1800,
+                "token_type": "Bearer", "expires_in": 1800, "refresh_expires_in": refresh_in,
             })
         if (car.revoked or current().now() > tokens["expires"]
                 or request.headers.get("authorization") != f"Bearer {tokens['access']}"):

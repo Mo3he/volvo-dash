@@ -6,6 +6,7 @@ Docs: https://developer.volvocars.com/apis/
 import asyncio
 import base64
 import hashlib
+import json
 import secrets
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -216,12 +217,21 @@ class VolvoClient:
         if r.status_code >= 400:
             raise VolvoError(_error_text(r), r.status_code)
         body = r.json()
+        refresh = body.get("refresh_token") or self.tokens.get("refresh_token")
         self.db.set("volvo_tokens", {
             "access_token": body["access_token"],
             # Volvo rotates refresh tokens; keep the old one if none came back.
-            "refresh_token": body.get("refresh_token") or self.tokens.get("refresh_token"),
+            "refresh_token": refresh,
             "expires_at": self.clock.now() + int(body.get("expires_in", 300)),
+            "refresh_expires_at": (
+                self.clock.now() + int(body["refresh_expires_in"])
+                if body.get("refresh_expires_in") else _jwt_exp(refresh)
+                if body.get("refresh_token") else self.tokens.get("refresh_expires_at")),
         })
+
+    def sign_in_until(self) -> float | None:
+        """When Volvo stops accepting the sign-in, if it says. Each refresh can move it."""
+        return self.tokens.get("refresh_expires_at")
 
     async def _access_token(self) -> str:
         if not self.tokens.get("refresh_token"):
@@ -334,3 +344,15 @@ def _error_text(r: httpx.Response) -> str:
     if isinstance(err, dict):
         return f"{err.get('message', '')} {err.get('description', '')}".strip() or f"HTTP {r.status_code}"
     return str(body.get("error_description") or err or f"HTTP {r.status_code}")
+
+
+def _jwt_exp(token: str | None) -> float | None:
+    """The expiry inside a JWT, read without checking the signature: it's only for display."""
+    parts = (token or "").split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        claims = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4)))
+        return float(claims["exp"])
+    except (ValueError, KeyError, TypeError):
+        return None

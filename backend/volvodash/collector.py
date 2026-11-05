@@ -28,6 +28,8 @@ log = logging.getLogger(__name__)
 
 # Needed on every poll to notice trips and charging.
 CORE = ("energy", "engine-status", "command-accessibility", "odometer")
+# Warn this long before the Volvo sign-in runs out.
+EXPIRY_WARNING_S = 14 * 86400
 # Seconds between polls of everything else: (while parked, while driving or charging).
 SLOW = {
     "statistics": (900, 60),
@@ -146,6 +148,7 @@ class Collector:
                 obs = self._merge(results, now)
                 self.obs = saved
             await self._refresh_static(now, force)
+            await self._check_sign_in_expiry(now, settings)
         except VolvoAuthError as e:
             log.warning("Volvo sign-in no longer valid: %s", e)
             self.db.set("volvo_auth_error", {"at": now, "message": str(e)})
@@ -279,12 +282,31 @@ class Collector:
         except Exception:
             log.exception("Daily backup failed")
 
+    async def _check_sign_in_expiry(self, now: float, settings: dict[str, Any]) -> None:
+        """Warn once when the sign-in stops being extended and runs out soon.
+
+        Every refresh normally moves the deadline weeks ahead, so a deadline this
+        close means Volvo has a hard limit and a new sign-in is coming due.
+        """
+        until = self.client.sign_in_until()
+        soon = bool(until) and until - now < EXPIRY_WARNING_S
+        warned = self.db.get("volvo_expiry_warned")
+        if soon and warned != until:
+            self.db.set("volvo_expiry_warned", until)
+            e = {"ts": now, "type": "sign_in_expiring", "detail": json.dumps({"until": until})}
+            self.db.insert("events", e)
+            await self._notify([{"ts": now, "type": "sign_in_expiring", "until": until}], settings)
+        elif not soon and warned:
+            self.db.delete("volvo_expiry_warned")
+
     async def _notify(self, events: list[dict[str, Any]], settings: dict[str, Any]) -> None:
         url = settings["webhook_url"]
         if not (self.live and url):
             return
         for e in events:
-            if e["type"] in settings["webhook_events"]:
+            # A coming expiry goes to whoever wants to hear about an expired one.
+            kind = "needs_reauth" if e["type"] == "sign_in_expiring" else e["type"]
+            if kind in settings["webhook_events"]:
                 await send_webhook(url, *describe(e, settings))
 
     # -- loop --------------------------------------------------------------

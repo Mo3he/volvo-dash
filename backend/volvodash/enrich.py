@@ -128,6 +128,11 @@ def describe(event: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]
         if event.get("energy_kwh"):
             text += f", {event['energy_kwh']:.1f} kWh added"
         return f"{name}: charging ended", text
+    if t == "sign_in_expiring":
+        until = event.get("until")
+        when = datetime.fromtimestamp(until).strftime("%d %b %Y") if until else "soon"
+        return (f"{name}: Volvo sign-in runs out {when}",
+                "Sign in again in Settings before then to keep logging without a gap.")
     if t == "needs_reauth":
         return f"{name}: sign in to Volvo again", "Volvo Dash has stopped logging until you reconnect in Settings."
     return f"{name}: {t.replace('_', ' ')}", ""

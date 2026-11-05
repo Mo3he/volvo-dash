@@ -134,6 +134,28 @@ def test_expired_sign_in_stops_polling_and_says_so(rig):
     assert r.client.calls_today() == calls
 
 
+def test_warns_once_before_a_hard_sign_in_limit(rig):
+    r = rig("live")
+    r.run(0.2)
+    # Normally every refresh pushes the deadline 90 days out.
+    assert r.client.sign_in_until() > r.clock.t + 80 * 86400
+    warned = lambda: r.db.one("SELECT COUNT(*) c FROM events WHERE type = 'sign_in_expiring'")["c"]
+
+    r.car.sign_in_deadline = r.clock.t + 20 * 86400
+    r.run(5)
+    assert warned() == 0 and r.client.sign_in_until() == pytest.approx(r.car.sign_in_deadline, abs=5)
+    r.run(2)
+    assert warned() == 1
+    r.run(2)
+    assert warned() == 1  # once, not every poll
+
+    # Signing in again lifts the limit, and the warning can fire again next time.
+    r.car.sign_in_deadline = None
+    r.run(0.1)
+    assert r.client.sign_in_until() > r.clock.t + 80 * 86400
+    assert r.db.get("volvo_expiry_warned") is None
+
+
 def test_single_use_refresh_tokens_survive_concurrent_requests(rig):
     # Regression: each poll sends several requests at once. When the access token
     # had expired, every one of them refreshed with the same single-use refresh

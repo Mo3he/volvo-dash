@@ -153,6 +153,8 @@ export interface Status {
     connected: boolean
     auth_error: { at: number; message: string } | null
     consent_at: number | null
+    /** When Volvo stops accepting the sign-in; refreshing normally pushes it on. */
+    sign_in_until: number | null
     calls_today: number
     daily_limit: number
     unavailable: string[]

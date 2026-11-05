@@ -274,6 +274,7 @@ const EVENT_TEXT: Record<string, (e: any) => string> = {
   locked: () => 'Locked',
   unlocked: () => 'Unlocked',
   needs_reauth: () => 'Volvo sign-in expired',
+  sign_in_expiring: (e) => `Volvo sign-in runs out ${e.until ? day(e.until) : 'soon'}`,
   command: (e) => `Sent ${String(e.command).replace(/-/g, ' ')}`,
 }
 

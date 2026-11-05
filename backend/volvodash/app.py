@@ -288,6 +288,7 @@ async def status() -> dict[str, Any]:
             "connected": ctx.client.connected(),
             "auth_error": db.get("volvo_auth_error"),
             "consent_at": db.get("volvo_consent_at"),
+            "sign_in_until": ctx.client.sign_in_until(),
             "calls_today": ctx.client.calls_today(),
             "daily_limit": DAILY_LIMIT,
             "unavailable": db.get("volvo_unavailable", []),
@@ -813,6 +814,7 @@ def _volvo_view(request: Request) -> dict[str, Any]:
         "scopes": ctx.client.scopes(),
         "consent_at": ctx.db.get("volvo_consent_at"),
         "auth_error": ctx.db.get("volvo_auth_error"),
+        "sign_in_until": ctx.client.sign_in_until(),
         "sim": ctx.sim_mode,
     }
 

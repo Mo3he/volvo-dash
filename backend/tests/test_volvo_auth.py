@@ -87,3 +87,21 @@ def test_old_and_new_volvo_id_clients(client_id, host):
     asyncio.run(client.exchange("good", state=parse_qs(url.query)["state"][0]))
     assert seen[0].url.host == host
     assert client.tokens["refresh_token"] == "r2"
+
+
+def test_reads_when_the_sign_in_runs_out():
+    import base64, json
+    payload = base64.urlsafe_b64encode(json.dumps({"exp": 9_000_000}).encode()).decode().rstrip("=")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "access_token": "a", "refresh_token": f"h.{payload}.s", "expires_in": 300})
+
+    db = DB(":memory:")
+    db.set("volvo_creds", {"api_key": "k", "client_id": "vid-dcr-x", "client_secret": "s",
+                           "redirect_uri": "https://dash.example/api/volvo/callback"})
+    db.set("volvo_tokens", {"refresh_token": "old", "expires_at": 0})
+    client = VolvoClient(db, ManualClock(1000), httpx.MockTransport(handle))
+    asyncio.run(client._access_token())
+    # No lifetime in the answer: read it from the token itself.
+    assert client.sign_in_until() == 9_000_000

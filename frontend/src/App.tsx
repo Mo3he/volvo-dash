@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { api, useLive, type Status } from './api'
 import { Icon, type IconName, Link, ThemeSwitch, useAction, usePath } from './components'
-import { configure } from './format'
+import { configure, day, now } from './format'
 import { Charging } from './pages/Charging'
 import { Overview } from './pages/Overview'
 import { Settings } from './pages/Settings'
@@ -78,6 +78,14 @@ function Shell() {
           <div className="banner warn">
             <span className="grow"><strong>Not connected to Volvo yet.</strong> Add your API details to start logging.</span>
             <Link to="/settings" className="btn primary">Connect</Link>
+          </div>
+        )}
+        {!c.auth_error && c.sign_in_until && c.sign_in_until - now() < 14 * 86400 && path !== '/settings' && (
+          <div className="banner warn">
+            <span className="grow">
+              <strong>Volvo sign-in runs out {day(c.sign_in_until)}.</strong> Sign in again before then to keep logging without a gap.
+            </span>
+            <Link to="/settings" className="btn primary">Sign in again</Link>
           </div>
         )}
         {c.auth_error && path !== '/settings' && (
