@@ -15,4 +15,4 @@ rsync -az --delete \
   --exclude .git --exclude deploy.env --exclude .env \
   ./ "$HOST:$DIR/"
 ssh "$HOST" "cd $DIR && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build && docker image prune -f >/dev/null"
-echo "Deployed to http://${HOST#*@}:8000"
+echo "Deployed to https://${HOST#*@}:8000"
