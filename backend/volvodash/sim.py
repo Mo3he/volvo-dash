@@ -420,7 +420,7 @@ def transport(car: SimCar, clock: Clock | Callable[[], Clock]) -> httpx.MockTran
         # A real round trip lets other requests run meanwhile; so must this.
         await asyncio.sleep(0)
         car.advance(current().now())
-        if request.url.host.startswith("volvoid"):
+        if request.url.host in ("volvoid.eu.volvocars.com", "auth.volvocars.com"):
             form = parse_qs(request.content.decode())
             if car.revoked or (
                 form.get("grant_type") == ["refresh_token"]

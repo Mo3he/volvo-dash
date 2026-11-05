@@ -11,7 +11,7 @@ from volvodash.db import DB
 from volvodash.volvo import SCOPES, VolvoAuthError, VolvoClient
 
 
-def make_client(seen: list[httpx.Request]) -> VolvoClient:
+def make_client(seen: list[httpx.Request], client_id: str = "dc-id") -> VolvoClient:
     def handle(request: httpx.Request) -> httpx.Response:
         seen.append(request)
         form = parse_qs(request.content.decode())
@@ -21,7 +21,7 @@ def make_client(seen: list[httpx.Request]) -> VolvoClient:
         return httpx.Response(400, json={"error": "invalid_grant", "error_description": "nope"})
 
     db = DB(":memory:")
-    db.set("volvo_creds", {"api_key": "k", "client_id": "id", "client_secret": "secret",
+    db.set("volvo_creds", {"api_key": "k", "client_id": client_id, "client_secret": "secret",
                            "redirect_uri": "https://dash.example/api/volvo/callback"})
     return VolvoClient(db, ManualClock(1000), httpx.MockTransport(handle))
 
@@ -72,3 +72,18 @@ def test_refused_optional_scopes_are_dropped_on_retry():
             f"http://localhost:8000/api/volvo/callback?error=invalid_scope&state={state}"))
     scope = parse_qs(urlparse(client.authorize_url()).query)["scope"][0].split()
     assert "location:read" in scope and not OPTIONAL_SCOPES & set(scope)
+
+
+@pytest.mark.parametrize("client_id, host", [
+    ("dc-abc", "volvoid.eu.volvocars.com"),
+    ("vid-dc-abc", "auth.volvocars.com"),
+])
+def test_old_and_new_volvo_id_clients(client_id, host):
+    # Clients made on Volvo ID's new service sign in there; old ones keep the old one.
+    seen: list[httpx.Request] = []
+    client = make_client(seen, client_id)
+    url = urlparse(client.authorize_url())
+    assert url.hostname == host
+    asyncio.run(client.exchange("good", state=parse_qs(url.query)["state"][0]))
+    assert seen[0].url.host == host
+    assert client.tokens["refresh_token"] == "r2"

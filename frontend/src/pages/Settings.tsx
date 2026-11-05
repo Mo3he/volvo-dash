@@ -114,6 +114,14 @@ function Volvo({ status }: { status: Status }) {
         </p>
       )}
 
+      {v.client_id && !v.client_id.startsWith('vid-') && (
+        <p className="error">
+          Volvo is moving its sign-in to a new service, and this application (client ID starting <code>dc-</code>) stops working after 31 January 2027.
+          Create a new application on the Volvo developer portal (its client ID starts with <code>vid-dc-</code>), then choose Change API details and enter
+          its API key, client ID and secret. You will sign in once more, and the old application can then be deleted.
+        </p>
+      )}
+
       {v.connected && !editing ? (
         <>
           <div className="kv" style={{ maxWidth: 520 }}>

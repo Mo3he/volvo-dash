@@ -830,6 +830,9 @@ async def volvo_credentials(request: Request) -> dict[str, Any]:
         value = (body.get(key) or "").strip()
         if value:  # blank keeps what is stored, so secrets never need to be sent back
             creds[key] = value
+    if creds.get("client_id") != ctx.client.creds.get("client_id"):
+        # A new application may tick different scopes.
+        ctx.db.delete("volvo_without_optional_scopes")
     ctx.db.set("volvo_creds", creds)
     return _volvo_view(request)
 

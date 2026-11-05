@@ -96,7 +96,9 @@ Cloudflare tunnel). The dashboard password is the only thing in front of it.
 2. **Publish** the application. Tick all the scopes listed on the Settings
    page, and set the redirect URI to the one Settings shows you
    (`https://your-host/api/volvo/callback`). Copy the **client ID** and
-   **client secret**.
+   **client secret**. New applications get a client ID starting `vid-dc-`;
+   older `dc-` ones stop working after 31 January 2027 and need replacing
+   with a new application.
 3. In Volvo Dash, open **Settings**, paste the three values, and choose
    **Save and sign in with Volvo ID**.
 

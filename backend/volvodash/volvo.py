@@ -16,8 +16,22 @@ import httpx
 from .clock import Clock
 from .db import DB
 
-AUTHORIZE_URL = "https://volvoid.eu.volvocars.com/as/authorization.oauth2"
-TOKEN_URL = "https://volvoid.eu.volvocars.com/as/token.oauth2"
+# Volvo ID is moving to a new sign-in service; clients made there have IDs
+# starting "vid-dc-". Old "dc-" clients stop working after 31 January 2027.
+OLD_ID = {
+    "authorize": "https://volvoid.eu.volvocars.com/as/authorization.oauth2",
+    "token": "https://volvoid.eu.volvocars.com/as/token.oauth2",
+}
+NEW_ID = {
+    "authorize": "https://auth.volvocars.com/realms/volvocars/protocol/openid-connect/auth",
+    "token": "https://auth.volvocars.com/realms/volvocars/protocol/openid-connect/token",
+}
+
+
+def volvo_id(client_id: str) -> dict[str, str]:
+    """Which Volvo ID service a client belongs to."""
+    return NEW_ID if client_id.startswith("vid-") else OLD_ID
+
 API_URL = "https://api.volvocars.com"
 CONNECTED = "/connected-vehicle/v2/vehicles"
 ENERGY = "/energy/v2/vehicles"
@@ -138,7 +152,7 @@ class VolvoClient:
             base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
             .decode().rstrip("=")
         )
-        return AUTHORIZE_URL + "?" + urlencode({
+        return volvo_id(self.creds["client_id"])["authorize"] + "?" + urlencode({
             "response_type": "code",
             "client_id": self.creds["client_id"],
             "redirect_uri": self.creds["redirect_uri"],
@@ -191,7 +205,7 @@ class VolvoClient:
         basic = base64.b64encode(f"{c['client_id']}:{c['client_secret']}".encode()).decode()
         try:
             r = await self.http.post(
-                TOKEN_URL, data=data, headers={"Authorization": f"Basic {basic}"}
+                volvo_id(c["client_id"])["token"], data=data, headers={"Authorization": f"Basic {basic}"}
             )
         except httpx.HTTPError as e:
             raise VolvoError(f"Could not reach Volvo ID: {type(e).__name__}") from e
