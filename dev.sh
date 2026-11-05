@@ -18,5 +18,7 @@ if [ "$1" = "sim" ]; then
   export VOLVODASH_SIM="${VOLVODASH_SIM:-ex40}" VOLVODASH_NO_AUTH=1
 fi
 export VOLVODASH_DATA="${VOLVODASH_DATA:-$PWD/data}"
+# Plain http locally; the vite dev server proxies to it.
+export VOLVODASH_TLS="${VOLVODASH_TLS:-off}"
 echo "Volvo Dash on http://localhost:${PORT:-8000}"
 exec backend/.venv/bin/python -m volvodash

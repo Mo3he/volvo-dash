@@ -947,5 +947,9 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    from . import tls
+
+    cert = tls.files(Path(os.environ.get("VOLVODASH_DATA", "data")))
     uvicorn.run(app, host=os.environ.get("HOST", "0.0.0.0"), port=int(os.environ.get("PORT", "8000")),
-                log_level="warning", proxy_headers=True)
+                log_level="warning", proxy_headers=True,
+                ssl_certfile=cert[0] if cert else None, ssl_keyfile=cert[1] if cert else None)

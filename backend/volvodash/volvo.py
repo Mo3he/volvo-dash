@@ -17,7 +17,8 @@ from .clock import Clock
 from .db import DB
 
 # Volvo ID is moving to a new sign-in service; clients made there have IDs
-# starting "vid-dc-". Old "dc-" clients stop working after 31 January 2027.
+# starting "vid-" (Volvo's notice says "vid-dc-", real ones read "vid-dcr…").
+# Old "dc-" clients stop working after 31 January 2027.
 OLD_ID = {
     "authorize": "https://volvoid.eu.volvocars.com/as/authorization.oauth2",
     "token": "https://volvoid.eu.volvocars.com/as/token.oauth2",

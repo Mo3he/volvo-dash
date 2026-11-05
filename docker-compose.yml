@@ -7,3 +7,9 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/data
+    environment:
+      # Served over https with a certificate the dashboard makes itself. Put the
+      # addresses you open it by in VOLVODASH_TLS_HOSTS (a .env file here works),
+      # or VOLVODASH_TLS=off for plain http behind a proxy that does https.
+      VOLVODASH_TLS: ${VOLVODASH_TLS:-auto}
+      VOLVODASH_TLS_HOSTS: ${VOLVODASH_TLS_HOSTS:-}

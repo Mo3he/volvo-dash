@@ -64,7 +64,13 @@ git clone https://github.com/Mo3he/volvo-dash.git && cd volvo-dash
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-Then open http://localhost:8000. On first visit you choose a dashboard
+Then open https://localhost:8000 (or `https://<server address>:8000`). The
+dashboard serves https with a certificate it makes for itself, because Volvo's
+sign-in only returns to https addresses. Your browser warns about it the first
+time; accept it. Put the addresses you open the dashboard by in
+`VOLVODASH_TLS_HOSTS` (in a `.env` file next to `docker-compose.yml`, for
+example `VOLVODASH_TLS_HOSTS=192.168.1.20,volvo.home.example`) so the
+certificate names them. On first visit you choose a dashboard
 password. To update: `git pull`, then the same command again.
 
 > A prebuilt image (`ghcr.io/mo3he/volvo-dash`, amd64 and arm64) is set up
@@ -96,17 +102,18 @@ Cloudflare tunnel). The dashboard password is the only thing in front of it.
 2. **Publish** the application. Tick all the scopes listed on the Settings
    page, and set the redirect URI to the one Settings shows you
    (`https://your-host/api/volvo/callback`). Copy the **client ID** and
-   **client secret**. New applications get a client ID starting `vid-dc-`;
+   **client secret**. New applications get a client ID starting `vid-`;
    older `dc-` ones stop working after 31 January 2027 and need replacing
-   with a new application.
+   with a new application. The new service will not publish an application
+   whose redirect URI is plain `http` (the portal answers with an error 500),
+   so use the https address Settings shows.
 3. In Volvo Dash, open **Settings**, paste the three values, and choose
    **Save and sign in with Volvo ID**.
 
 Two things to know:
 
 - **The redirect URI.** It must match what you registered exactly. If Volvo
-  will not accept your dashboard's address (for example plain `http://` on a
-  home network), register any address it does accept, enter the same one in
+  will not accept your dashboard's address, register any https address it does accept, enter the same one in
   Settings, sign in, and paste the address you land on into the box under
   "Signed in, but landed on a page that would not load?".
 - **The sign-in lasts up to six months.** Volvo's documentation says a grant
@@ -189,6 +196,9 @@ cd frontend && npm run dev         # hot reload on :5173, proxies /api to :8000
 | `VOLVODASH_SIM` | `ex40`, `live` or `sparse`: run against the simulator, in a separate `sim.db` |
 | `VOLVODASH_SIM_DAYS` | Days of history to simulate at startup (default 30) |
 | `VOLVODASH_SIM_SPEED` | How much faster than real time the simulator runs (default 20) |
+| `VOLVODASH_TLS` | `off` serves plain http, for running behind a proxy that does https (default: https with its own certificate) |
+| `VOLVODASH_TLS_HOSTS` | Comma-separated addresses the dashboard's own certificate should cover |
+| `VOLVODASH_TLS_CERT`, `VOLVODASH_TLS_KEY` | A certificate and key of your own to serve instead |
 | `VOLVODASH_NO_AUTH` | `1` disables the dashboard password. Local use only |
 | `PORT`, `HOST` | Where to listen (default `0.0.0.0:8000`) |
 
