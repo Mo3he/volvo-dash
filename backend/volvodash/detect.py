@@ -23,6 +23,8 @@ IDLE_CLOSE_S = 600
 CHARGE_RESUME_S = 1800
 # After a trip closes, late odometer/location/SoC reports still update it for this long.
 LATE_PATCH_S = 600
+# A trip whose positions are this far apart moved, even if its odometer didn't.
+GPS_MOVED_M = 300
 # Power samples further apart than this are not integrated across...
 MAX_SAMPLE_GAP_S = 600
 # ...unless power held steady on both sides of the gap. The EX40 can go 20
@@ -269,8 +271,10 @@ class Detector:
         last = self.s["last_trip"]
         if not last or not last.get("no_distance") or not o.odometer_ts:
             return False
-        # The stale reading the trip already has was taken as it set off.
-        if o.odometer_km is None or o.odometer_ts <= last["started_at"] + CLOCK_SKEW_S:
+        # The stale reading the trip already has was taken as it set off, or sent
+        # again at switch-off with a fresh time but the old figure.
+        after = max(last["started_at"] + CLOCK_SKEW_S, last.get("odo_ts") or 0)
+        if o.odometer_km is None or o.odometer_ts <= after:
             return False
         last["no_distance"] = False
         self.db.update("trips", last["id"], {
@@ -281,6 +285,9 @@ class Detector:
         if row is None:
             # The odometer says the car never moved after all.
             self.s["last_trip"] = None
+        elif row["distance_km"] is None:
+            # Its positions say it did: wait for a later reading.
+            last["no_distance"], last["odo_ts"] = True, o.odometer_ts
         else:
             self._event(o.odometer_ts, "trip_distance", trip_id=last["id"],
                         distance_km=row["distance_km"])
@@ -384,7 +391,7 @@ class Detector:
             "saw_signal": trip["saw_signal"], "moves": trip["moves"],
             "min_start": trip["min_start"], "speed_hint": trip.get("speed_hint"),
             "charged": False, "no_end": row["end_lat"] is None,
-            "no_distance": row["distance_km"] is None,
+            "no_distance": row["distance_km"] is None, "odo_ts": o.odometer_ts,
         }
         self._event(
             ended_at, "trip_ended", trip_id=trip["id"],
@@ -417,7 +424,8 @@ class Detector:
             distance = r["distance_override"]
 
         waiting = not distance or distance <= 0
-        if waiting and not (trip["saw_signal"] and not trip.get("settled")):
+        keep = trip["saw_signal"] and (not trip.get("settled") or self._gps_moved(trip_id, r))
+        if waiting and not keep:
             self.db.x("DELETE FROM trip_points WHERE trip_id = ?", trip_id)
             self.db.x("DELETE FROM trips WHERE id = ?", trip_id)
             return None
@@ -433,7 +441,7 @@ class Detector:
                 "distance_km": None, "efficiency": None, "avg_speed_kmh": None,
                 "energy_kwh": round(max(used, 0) / 100 * self.capacity(), 2) if used is not None else None,
                 "energy_source": "soc" if used is not None else None,
-            }
+            } | self._end_position(trip_id, r)
             self.db.update("trips", trip_id, values)
             return dict(r) | values
 
@@ -477,8 +485,13 @@ class Detector:
             "efficiency": round(efficiency, 1) if efficiency is not None else None,
             "avg_speed_kmh": round(distance / hours, 1) if hours > 1 / 60 else None,
         }
-        # The end is the last position reported during or after the trip. The
-        # start point doesn't count: no new fix means the end is unknown.
+        values |= self._end_position(trip_id, r)
+        self.db.update("trips", trip_id, values)
+        return dict(r) | values
+
+    def _end_position(self, trip_id: int, r: Any) -> dict[str, Any]:
+        """The end is the last position reported during or after the trip. The
+        start point doesn't count: no new fix means the end is unknown."""
         points = self.db.q(
             "SELECT lat, lon FROM trip_points WHERE trip_id = ? ORDER BY ts", trip_id)
         if r["start_lat"] is not None:
@@ -486,13 +499,23 @@ class Detector:
         end = points[-1] if points else None
         if end:
             # A real fix beats one entered by hand.
-            values |= {"end_lat": end["lat"], "end_lon": end["lon"], "end_manual": 0}
+            values = {"end_lat": end["lat"], "end_lon": end["lon"], "end_manual": 0}
             if r["end_manual"]:
                 values["end_place"] = None
-        elif not r["end_manual"]:
-            values |= {"end_lat": None, "end_lon": None}
-        self.db.update("trips", trip_id, values)
-        return dict(r) | values
+            return values
+        if not r["end_manual"]:
+            return {"end_lat": None, "end_lon": None}
+        return {}
+
+    def _gps_moved(self, trip_id: int, r: Any) -> bool:
+        """Whether the trip's positions show it went somewhere, whatever the
+        odometer says. The car sometimes reports a drive with an unchanged odometer."""
+        points = self.db.q(
+            "SELECT lat, lon FROM trip_points WHERE trip_id = ? ORDER BY ts", trip_id)
+        if len(points) < 2:
+            return False
+        a, b = points[0], points[-1]
+        return haversine_m(a["lat"], a["lon"], b["lat"], b["lon"]) >= GPS_MOVED_M
 
     def _patch_last_trip(self, o: Obs, prev: Obs | None) -> None:
         """Apply reports that arrive just after a trip closed (final location, SoC, odometer)."""

@@ -376,3 +376,50 @@ def test_end_and_distance_entered_by_hand_survive_and_undo(rig):
     det.refinalize(got["id"])
     got = r.db.one("SELECT * FROM trips WHERE id = ?", got["id"])
     assert got["ended_at"] == car_end and got["distance_km"] == car_km
+
+
+def test_drive_kept_when_the_car_resends_its_old_odometer_at_switch_off():
+    # Seen 6 Nov: a 2.5 km drive home, and at switch-off the car sent the
+    # unchanged odometer and trip meter with a fresh time. It is not a 0 km trip.
+    from volvodash.db import DB
+    from volvodash.detect import Obs
+
+    db = DB(":memory:")
+    det = Detector(db, lambda: CAPACITY_KWH)
+    t0 = 1_800_000_000.0
+    a, b = (57.70, 11.90), (57.71, 11.94)  # about 2.6 km apart
+
+    def obs(m, engine, odo, odo_m, at, loc_m, **kw):
+        return Obs(t=t0 + m * 60, soc=kw.pop("soc", 67.0), soc_ts=t0 + m * 60,
+                   connection=kw.pop("connection", "DISCONNECTED"),
+                   charging_status=kw.pop("charging", "IDLE"), charge_ts=t0,
+                   engine=engine, engine_ts=t0 + (m - 0.5) * 60,
+                   availability="CAR_IN_USE" if engine == "RUNNING" else "AVAILABLE",
+                   availability_ts=t0 + (m - 0.5) * 60,
+                   odometer_km=odo, odometer_ts=t0 + odo_m * 60,
+                   trip_auto_km=17.7, stats_ts=t0 + odo_m * 60, trip_manual_km=odo + 0.4,
+                   lat=at[0], lon=at[1], location_ts=t0 + loc_m * 60, **kw)
+
+    det.feed(obs(-20, "STOPPED", 122.0, -30, a, -30))
+    det.feed(obs(-10, "STOPPED", 122.0, -30, a, -30))
+    det.feed(obs(1, "RUNNING", 122.0, 0.5, a, -30))
+    det.feed(obs(5, "RUNNING", 122.0, 0.5, a, -30, soc=66.0))
+    det.feed(obs(9, "STOPPED", 122.0, 8.5, b, 8.5, soc=66.0))   # stale figure, fresh time
+    det.feed(obs(11, "STOPPED", 122.0, 8.5, b, 8.5, soc=66.0, connection="CONNECTED",
+                 charging="CHARGING"))
+    det.feed(obs(60, "STOPPED", 122.0, 8.5, b, 8.5, soc=70.0, connection="CONNECTED",
+                 charging="CHARGING"))
+
+    trips = db.q("SELECT * FROM trips")
+    assert len(trips) == 1
+    assert trips[0]["ended_at"] is not None and trips[0]["distance_km"] is None
+    assert (trips[0]["end_lat"], trips[0]["end_lon"]) == b
+
+    # Should the car resend the same figure later, the trip still waits...
+    det.feed(obs(120, "STOPPED", 122.0, 119, b, 8.5, soc=72.0, connection="CONNECTED",
+                 charging="CHARGING"))
+    assert db.one("SELECT distance_km FROM trips")["distance_km"] is None
+    # ...and takes the distance once the odometer catches up.
+    det.feed(obs(180, "STOPPED", 125.0, 179, b, 8.5, soc=74.0, connection="CONNECTED",
+                 charging="CHARGING"))
+    assert db.one("SELECT distance_km FROM trips")["distance_km"] == pytest.approx(3.0, abs=0.1)
