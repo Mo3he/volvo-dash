@@ -532,6 +532,13 @@ async def stats(request: Request) -> dict[str, Any]:
     distance = sum(t["distance_km"] or 0 for t in trip_rows)
     charged = sum(c["energy_billed_kwh"] or 0 for c in charge_rows)
     cost = sum(c["cost"] or 0 for c in charge_rows)
+    # Cost per 100 km is the price paid per kWh times the energy driving used per
+    # 100 km. Dividing charge costs by distance would count a charge before the
+    # distance it pays for has been driven.
+    priced = [c for c in charge_rows if c["cost"] is not None and c["energy_billed_kwh"]]
+    priced_kwh = sum(c["energy_billed_kwh"] for c in priced)
+    price = sum(c["cost"] for c in priced) / priced_kwh if priced_kwh else None
+    per_100 = measured_kwh / measured_km * 100 if measured_km >= 20 else None
     return {
         "bucket": unit,
         "totals": {
@@ -548,7 +555,8 @@ async def stats(request: Request) -> dict[str, Any]:
                                 if c["charge_type"] == "DC"), 1),
             "cost": round(cost, 2),
             "unpriced_charges": sum(1 for c in charge_rows if c["cost"] is None),
-            "cost_per_100km": round(cost / distance * 100, 2) if distance >= 20 and cost else None,
+            "price_per_kwh": round(price, 2) if price is not None else None,
+            "cost_per_100km": round(price * per_100, 2) if price and per_100 else None,
         },
         "series": [{"bucket": k, **{m: round(v, 2) for m, v in buckets[k].items()}}
                    for k in sorted(buckets)],

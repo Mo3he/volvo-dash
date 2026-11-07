@@ -459,3 +459,20 @@ def test_preconditioning_on_a_full_battery_is_not_a_charge():
     assert not db.q("SELECT * FROM events WHERE type = 'charge_started' AND ts > ?", t0 + 3600)
     after = after_charge(db, dict(charges[0]), 97.0)
     assert after["trips"] == 1 and after["distance_km"] == pytest.approx(12, abs=0.5)
+
+
+def test_cost_per_100km_is_price_times_consumption(rig):
+    # A charge paid for today pays for driving still to come, so dividing the
+    # period's charging bill by its distance overstates the cost.
+    import asyncio
+    from types import SimpleNamespace
+
+    from volvodash import app as webapp
+
+    r = rig("ex40")
+    r.run(5)
+    r.db.x("UPDATE charges SET price_per_kwh = 2.0")
+    webapp.ctx.db, webapp.ctx.clock, webapp.ctx.collector = r.db, r.clock, r.collector
+    t = asyncio.run(webapp.stats(SimpleNamespace(query_params={})))["totals"]
+    assert t["price_per_kwh"] == pytest.approx(2.0)
+    assert t["cost_per_100km"] == pytest.approx(2.0 * t["efficiency"], rel=0.02)
