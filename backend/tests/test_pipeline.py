@@ -423,3 +423,39 @@ def test_drive_kept_when_the_car_resends_its_old_odometer_at_switch_off():
     det.feed(obs(180, "STOPPED", 125.0, 179, b, 8.5, soc=74.0, connection="CONNECTED",
                  charging="CHARGING"))
     assert db.one("SELECT distance_km FROM trips")["distance_km"] == pytest.approx(3.0, abs=0.1)
+
+
+def test_preconditioning_on_a_full_battery_is_not_a_charge():
+    # Seen 7 Nov: charged to 100 % overnight, then the car warmed itself up from
+    # the plug in the morning. That showed as a second, 0 % "charge" and the
+    # day's driving was counted against it.
+    from volvodash.db import DB
+    from volvodash.detect import Obs
+    from volvodash.periods import after_charge
+
+    db = DB(":memory:")
+    det = Detector(db, lambda: CAPACITY_KWH)
+    t0 = 1_800_000_000.0
+
+    def obs(m, soc, charging, connection="CONNECTED", engine="STOPPED", odo=100.0, power=None):
+        t = t0 + m * 60
+        return Obs(t=t, soc=soc, soc_ts=t, charging_status=charging, charge_ts=t,
+                   connection=connection, charge_type="AC", power_w=power, target_soc=100,
+                   engine=engine, engine_ts=t, availability="AVAILABLE", availability_ts=t,
+                   odometer_km=odo, odometer_ts=t)
+
+    for m, soc in ((0, 60.0), (60, 80.0), (120, 100.0)):
+        det.feed(obs(m, soc, "CHARGING", power=11000))
+    det.feed(obs(121, 100.0, "IDLE"))
+    for m in (500, 503, 507):  # preconditioning
+        det.feed(obs(m, 100.0, "CHARGING", power=3000))
+    det.feed(obs(508, 100.0, "IDLE"))
+    det.feed(obs(540, 100.0, "IDLE", connection="DISCONNECTED"))
+    det.feed(obs(541, 100.0, "IDLE", connection="DISCONNECTED", engine="RUNNING"))
+    det.feed(obs(560, 97.0, "IDLE", connection="DISCONNECTED", engine="STOPPED", odo=112.0))
+
+    charges = db.q("SELECT * FROM charges")
+    assert len(charges) == 1 and charges[0]["soc_end"] == 100.0
+    assert not db.q("SELECT * FROM events WHERE type = 'charge_started' AND ts > ?", t0 + 3600)
+    after = after_charge(db, dict(charges[0]), 97.0)
+    assert after["trips"] == 1 and after["distance_km"] == pytest.approx(12, abs=0.5)

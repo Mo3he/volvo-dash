@@ -585,7 +585,9 @@ class Detector:
                         else get_settings(self.db)["default_price_per_kwh"]
                     ),
                 })
-                charge = {"id": charge_id, "last_sample": None}
+                # What to go back to should this turn out not to be a charge.
+                charge = {"id": charge_id, "last_sample": None, "before": last,
+                          "trip_charged": bool(self.s["last_trip"] and self.s["last_trip"].get("charged"))}
                 self._event(started, "charge_started", charge_id=charge_id, soc=o.soc)
             self.s["charge"] = charge
             self.s["last_charge"] = None
@@ -616,6 +618,14 @@ class Detector:
         self.db.update("charges", charge["id"], {"ended_at": ended})
         self.s["charge"] = None
         row = self._finalize_charge(charge["id"], closing=True)
+        if not row and "before" in charge:
+            # Not a charge after all: the one before it is the last charge again.
+            before = charge["before"]
+            if before and o.connection == "DISCONNECTED":
+                before["unplugged"] = True
+            self.s["last_charge"] = before
+            if self.s["last_trip"]:
+                self.s["last_trip"]["charged"] = charge["trip_charged"]
         if row:
             self.s["last_charge"] = {
                 "id": charge["id"], "ended_at": ended,
@@ -661,10 +671,16 @@ class Detector:
         )
         from_soc = gained / 100 * self.capacity() if gained is not None else None
 
-        if closing and (gained or 0) < 1 and metered < 0.5 and duration < 300:
-            # A blip, not a session.
+        blip = (gained or 0) < 1 and metered < 0.5 and duration < 300
+        # Power drawn while already full is the car heating or cooling itself
+        # from the plug (preconditioning), not charging.
+        full = (gained or 0) < 1 and r["soc_start"] is not None and (
+            r["soc_start"] >= (r["target_soc"] or 100) - 1)
+        if closing and (blip or full):
             self.db.x("DELETE FROM charge_samples WHERE charge_id = ?", charge_id)
             self.db.x("DELETE FROM charges WHERE id = ?", charge_id)
+            self.db.x("DELETE FROM events WHERE type = 'charge_started' AND ts = ?",
+                      r["started_at"])
             return None
 
         # Integrated power is the better number, but only if we sampled most of the session.
