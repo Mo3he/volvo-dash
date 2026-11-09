@@ -57,11 +57,12 @@ Unlock is deliberately not available over MQTT.
 
 ## Run it
 
-With Docker, building from this repository:
+With Docker, using the published image (`ghcr.io/mo3he/volvo-dash`, amd64 and arm64):
 
 ```sh
-git clone https://github.com/Mo3he/volvo-dash.git && cd volvo-dash
-docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+mkdir volvo-dash && cd volvo-dash
+curl -O https://raw.githubusercontent.com/Mo3he/volvo-dash/main/docker-compose.yml
+docker compose up -d
 ```
 
 Then open https://localhost:8000 (or `https://<server address>:8000`). The
@@ -71,12 +72,14 @@ time; accept it. Put the addresses you open the dashboard by in
 `VOLVODASH_TLS_HOSTS` (in a `.env` file next to `docker-compose.yml`, for
 example `VOLVODASH_TLS_HOSTS=192.168.1.20,volvo.home.example`) so the
 certificate names them. On first visit you choose a dashboard
-password. To update: `git pull`, then the same command again.
+password. To update: `docker compose pull && docker compose up -d`.
 
-> A prebuilt image (`ghcr.io/mo3he/volvo-dash`, amd64 and arm64) is set up
-> to publish from GitHub Actions but has not been published yet. Once it is,
-> `docker-compose.yml` on its own will be enough: download it and run
-> `docker compose up -d`.
+To build the image from this repository instead:
+
+```sh
+git clone https://github.com/Mo3he/volvo-dash.git && cd volvo-dash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
 
 From source (Python 3.11+ and Node 20+):
 
