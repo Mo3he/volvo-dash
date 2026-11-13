@@ -292,7 +292,7 @@ def test_position_entered_by_hand_for_a_car_park_without_gps(rig):
 
     r = rig("ex40")
     r.car.no_gps = {"work"}
-    webapp.ctx.db = r.db
+    webapp.ctx.db, webapp.ctx.collector = r.db, r.collector
     garage = {"lat": 57.7061, "lon": 11.9372, "name": "Work garage"}
     row = lambda i: r.db.one("SELECT * FROM trips WHERE id = ?", i)
 
@@ -327,15 +327,30 @@ def test_position_entered_by_hand_for_a_car_park_without_gps(rig):
     assert {(t["started_at"], t["start_manual"], t["end_manual"]) for t in r.db.q(
         "SELECT * FROM trips WHERE start_manual = 1 OR end_manual = 1")} == manual
 
-    # Clearing it clears the neighbour too; a position the car reported can't be overwritten.
+    # Clearing it clears the neighbour too; a start the car reported can't be overwritten.
     t = r.db.one("SELECT * FROM trips WHERE end_manual = 1 ORDER BY started_at DESC LIMIT 1")
     webapp._set_trip_position(t, "end", None)
     assert row(t["id"])["end_lat"] is None
     n = r.db.one("SELECT * FROM trips WHERE started_at > ? ORDER BY started_at LIMIT 1", t["started_at"])
     assert n["start_lat"] is None and n["start_manual"] == 0
-    gps = r.db.one("SELECT * FROM trips WHERE end_lat IS NOT NULL AND end_manual = 0 LIMIT 1")
+    gps = r.db.one("SELECT * FROM trips WHERE start_lat IS NOT NULL AND start_manual = 0 LIMIT 1")
     with pytest.raises(HTTPException):
-        webapp._set_trip_position(gps, "end", garage)
+        webapp._set_trip_position(gps, "start", garage)
+
+    # An end the car reported can be corrected, survives a rebuild, and can go back.
+    gps = r.db.one("SELECT * FROM trips WHERE end_lat IS NOT NULL AND end_manual = 0 "
+                   "AND ended_at IS NOT NULL ORDER BY started_at LIMIT 1")
+    car_end = (gps["end_lat"], gps["end_lon"])
+    webapp._set_trip_position(gps, "end", garage)
+    assert (row(gps["id"])["end_lat"], row(gps["id"])["end_manual"]) == (57.7061, 1)
+    r.collector.detector.refinalize(gps["id"])
+    assert row(gps["id"])["end_lat"] == 57.7061  # recomputing doesn't undo it
+    rebuild(r.db, r.collector.capacity)
+    again = r.db.one("SELECT * FROM trips WHERE started_at = ?", gps["started_at"])
+    assert (again["end_lat"], again["end_place"], again["end_manual"]) == (57.7061, "Work garage", 1)
+    r.collector.detector = Detector(r.db, r.collector.capacity)  # rebuild replaced its state
+    webapp._set_trip_position(again, "end", None)
+    assert (row(again["id"])["end_lat"], row(again["id"])["end_lon"], row(again["id"])["end_manual"]) == (*car_end, 0)
 
 
 def test_trip_waits_for_its_distance_where_there_is_no_signal(rig):

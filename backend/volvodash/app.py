@@ -408,11 +408,13 @@ def _set_trip_end(row: Any, body: dict[str, Any]) -> None:
 def _set_trip_position(row: Any, end: str, loc: dict[str, Any] | None) -> None:
     """Enter (or with None, clear) a start or end position by hand.
 
-    Only where the car had no GPS. The car did not move between one trip's
-    end and the next one's start, so the neighbouring trip gets it too.
+    A start only where the car had no GPS. An end also where it had one: its
+    last fix can be from before it drove into a car park with no signal.
+    Clearing an end goes back to the car's. The car did not move between one
+    trip's end and the next one's start, so the neighbouring trip gets it too.
     """
-    if row[f"{end}_lat"] is not None and not row[f"{end}_manual"]:
-        raise HTTPException(400, f"The car reported this trip's {end} position itself.")
+    if end == "start" and row["start_lat"] is not None and not row["start_manual"]:
+        raise HTTPException(400, "The car reported this trip's start position itself.")
     if loc is None:
         values = {"lat": None, "lon": None, "place": None, "manual": 0}
     else:
@@ -426,6 +428,8 @@ def _set_trip_position(row: Any, end: str, loc: dict[str, Any] | None) -> None:
         ctx.db.update("trips", trip_id, {f"{which}_{k}": v for k, v in values.items()})
 
     apply(row["id"], end)
+    if end == "end" and loc is None:
+        ctx.collector.detector.refinalize(row["id"])  # back to the car's last fix
     if end == "end":
         other = ctx.db.one(
             "SELECT * FROM trips WHERE started_at > ? ORDER BY started_at LIMIT 1", row["started_at"])

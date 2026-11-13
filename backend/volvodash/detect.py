@@ -495,21 +495,19 @@ class Detector:
 
     def _end_position(self, trip_id: int, r: Any) -> dict[str, Any]:
         """The end is the last position reported during or after the trip. The
-        start point doesn't count: no new fix means the end is unknown."""
+        start point doesn't count: no new fix means the end is unknown. One
+        entered by hand wins: the car's last fix can be from before it drove
+        into a car park with no signal."""
+        if r["end_manual"]:
+            return {}
         points = self.db.q(
             "SELECT lat, lon FROM trip_points WHERE trip_id = ? ORDER BY ts", trip_id)
         if r["start_lat"] is not None:
             points = points[1:]
         end = points[-1] if points else None
         if end:
-            # A real fix beats one entered by hand.
-            values = {"end_lat": end["lat"], "end_lon": end["lon"], "end_manual": 0}
-            if r["end_manual"]:
-                values["end_place"] = None
-            return values
-        if not r["end_manual"]:
-            return {"end_lat": None, "end_lon": None}
-        return {}
+            return {"end_lat": end["lat"], "end_lon": end["lon"]}
+        return {"end_lat": None, "end_lon": None}
 
     def _gps_moved(self, trip_id: int, r: Any) -> bool:
         """Whether the trip's positions show it went somewhere, whatever the
@@ -766,9 +764,10 @@ def rebuild(db: DB, capacity_kwh: Callable[[], float | None]) -> dict[str, int]:
             if match:
                 values = {"note": old["note"]} if old["note"] is not None else {}
                 new = db.one("SELECT start_lat, end_lat FROM trips WHERE id = ?", match)
-                # Positions entered by hand, unless the car has since reported one.
+                # Positions entered by hand: an end always, a start unless the car
+                # has since reported one.
                 for end in ("start", "end"):
-                    if old[f"{end}_manual"] and new[f"{end}_lat"] is None:
+                    if old[f"{end}_manual"] and (end == "end" or new[f"{end}_lat"] is None):
                         values |= {f"{end}_{k}": old[f"{end}_{k}"] for k in ("lat", "lon", "place", "manual")}
                 overrides = {k: old[k] for k in ("ended_override", "distance_override") if old[k] is not None}
                 db.update("trips", match, values | overrides)

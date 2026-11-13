@@ -121,7 +121,7 @@ function TripDetail({ id, onChanged }: { id: number; onChanged: () => void }) {
         </p>
       ) : null}
       {markers.length > 0 && <MapView path={path} markers={markers} dashed={sparse} />}
-      {(['start', 'end'] as const).map((at) => (t[`${at}_lat`] == null || !!t[`${at}_manual`]) && (
+      {(['start', 'end'] as const).map((at) => (at === 'end' || t[`${at}_lat`] == null || !!t[`${at}_manual`]) && (
         <PositionFix key={at} t={t} at={at} onSaved={() => { reload(); onChanged() }} />
       ))}
       <EndFix t={t} onSaved={() => { reload(); onChanged() }} />
@@ -159,6 +159,8 @@ function PositionFix({ t, at, onSaved }: { t: Trip; at: 'start' | 'end'; onSaved
   const { data: places } = useLive<SavedPlace[]>('/places')
   const { busy, run, note } = useAction()
   const manual = !!t[`${at}_manual`]
+  // The car reported this end itself; it can still be wrong.
+  const fromCar = !manual && t[`${at}_lat`] != null
 
   const save = (body: { lat: number; lon: number; name?: string } | null) =>
     run(async () => {
@@ -181,10 +183,12 @@ function PositionFix({ t, at, onSaved }: { t: Trip; at: 'start' | 'end'; onSaved
         <p className="hint grow" style={{ margin: 0 }}>
           {manual
             ? `The ${at} position was entered by hand.`
-            : `The car had no GPS at the ${at} of this trip (an underground car park, for example), so that place is unknown.`}
+            : fromCar
+              ? 'Wrong place? Where there is no signal (an underground car park, say) the car’s last position can be from before it got there.'
+              : `The car had no GPS at the ${at} of this trip (an underground car park, for example), so that place is unknown.`}
         </p>
-        {!open && <button className="btn" onClick={() => setOpen(true)}>{manual ? 'Change' : `Set ${at} location`}</button>}
-        {!open && manual && <button className="btn plain" disabled={busy} onClick={() => save(null)}>Remove</button>}
+        {!open && <button className="btn" onClick={() => setOpen(true)}>{manual ? 'Change' : fromCar ? `Correct ${at} location` : `Set ${at} location`}</button>}
+        {!open && manual && <button className="btn plain" disabled={busy} onClick={() => save(null)}>{at === 'end' ? 'Use the car’s position' : 'Remove'}</button>}
       </div>
       {open && (
         <div className="stack">
