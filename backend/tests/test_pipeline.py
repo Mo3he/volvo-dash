@@ -476,3 +476,30 @@ def test_cost_per_100km_is_price_times_consumption(rig):
     t = asyncio.run(webapp.stats(SimpleNamespace(query_params={})))["totals"]
     assert t["price_per_kwh"] == pytest.approx(2.0)
     assert t["cost_per_100km"] == pytest.approx(2.0 * t["efficiency"], rel=0.02)
+
+
+def test_battery_reports_while_driving_dont_shorten_an_unseen_trip():
+    # Seen 12 Nov: driving out of a garage with no signal, the car's only report
+    # during the drive was its battery level. That isn't proof it was parked.
+    from volvodash.db import DB
+    from volvodash.detect import Obs
+
+    db = DB(":memory:")
+    det = Detector(db, lambda: CAPACITY_KWH)
+    t0 = 1_800_000_000.0
+
+    def obs(m, soc, soc_m, odo, odo_m, ta, speed, stop_m=0):
+        return Obs(t=t0 + m * 60, soc=soc, soc_ts=t0 + soc_m * 60, charging_status="IDLE",
+                   connection="DISCONNECTED", engine="STOPPED", engine_ts=t0 + stop_m * 60,
+                   availability="AVAILABLE", availability_ts=t0 + stop_m * 60,
+                   odometer_km=odo, odometer_ts=t0 + odo_m * 60,
+                   trip_auto_km=ta, avg_speed_auto=speed, stats_ts=t0 + odo_m * 60)
+
+    det.feed(obs(1, 66.0, 1, 233.0, 0, 8.7, 24))
+    det.feed(obs(8, 65.0, 7, 233.0, 0, 8.7, 24))    # battery report mid-drive
+    det.feed(obs(10, 65.0, 9.5, 233.0, 0, 0.0, 0))  # and another
+    det.feed(obs(15, 65.0, 9.5, 238.0, 14, 5.4, 25, stop_m=14.1))  # arrives: 5.4 km at 25 km/h
+
+    t = db.one("SELECT * FROM trips")
+    assert t["start_estimated"] == 1
+    assert (t["ended_at"] - t["started_at"]) / 60 == pytest.approx(13, abs=1)

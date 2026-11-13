@@ -67,14 +67,15 @@ class Obs:
         a.pop("t"), b.pop("t")
         return a == b
 
-    def car_time(self) -> float | None:
-        """Most recent moment the car itself reported anything."""
-        stamps = [
-            ts
-            for ts in (self.soc_ts, self.charge_ts, self.engine_ts,
-                       self.availability_ts, self.odometer_ts, self.location_ts)
-            if ts
-        ]
+    def parked_time(self) -> float | None:
+        """Latest moment the car itself said it was parked. Battery and charging
+        reports don't count: the car sends those while driving too."""
+        stamps = [self.odometer_ts]
+        if self.engine == "STOPPED":
+            stamps.append(self.engine_ts)
+        if self.availability == "AVAILABLE":
+            stamps.append(self.availability_ts)
+        stamps = [ts for ts in stamps if ts]
         return max(stamps) if stamps else None
 
 
@@ -167,7 +168,7 @@ class Detector:
         if not self.s["trip"]:
             lat, lon = self._position(o)
             self.s["park"] = {
-                "car_t": o.car_time() or o.t,
+                "car_t": o.parked_time(),
                 "odo": o.odometer_km,
                 "soc": o.soc,
                 "ta": o.trip_auto_km,
@@ -312,6 +313,9 @@ class Detector:
             self.db.update("trips", last["id"], {"ended_at": None})
             self.db.x(
                 "DELETE FROM events WHERE type = 'trip_ended' AND ts = ?", last["ended_at"])
+            self.db.x(
+                "DELETE FROM events WHERE type = 'trip_distance' "
+                "AND json_extract(detail, '$.trip_id') = ?", last["id"])
             self.s["last_trip"] = None
             trip = {
                 "id": last["id"], "started_at": last["started_at"],
@@ -730,7 +734,8 @@ def rebuild(db: DB, capacity_kwh: Callable[[], float | None]) -> dict[str, int]:
     kept_events = [
         dict(r) for r in db.q(
             "SELECT ts, type, detail FROM events WHERE type NOT IN "
-            "('trip_started','trip_ended','charge_started','charge_ended','plugged','unplugged')"
+            "('trip_started','trip_ended','trip_distance','charge_started','charge_ended',"
+            "'plugged','unplugged')"
         )
     ]
 
