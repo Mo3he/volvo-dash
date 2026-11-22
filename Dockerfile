@@ -6,7 +6,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.13-slim
+FROM python:3.15-slim
 LABEL org.opencontainers.image.description="Self-hosted trip and charging log for Volvo EVs"
 WORKDIR /app
 COPY backend/pyproject.toml ./
