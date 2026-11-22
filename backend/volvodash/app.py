@@ -944,8 +944,9 @@ STATIC = Path(os.environ.get("VOLVODASH_STATIC") or Path(__file__).parents[2] / 
 async def spa(path: str) -> Response:
     if path.startswith("api/"):
         raise HTTPException(404, "Not found.")
-    file = (STATIC / path).resolve()
-    if path and file.is_file() and STATIC.resolve() in file.parents:
+    root = os.path.realpath(STATIC)
+    file = os.path.realpath(os.path.join(root, path))
+    if path and file.startswith(root + os.sep) and os.path.isfile(file):
         return FileResponse(file)
     index = STATIC / "index.html"
     if index.is_file():

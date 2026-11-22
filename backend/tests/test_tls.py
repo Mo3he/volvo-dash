@@ -22,7 +22,7 @@ def test_makes_keeps_and_renews_its_certificate(tmp_path, monkeypatch):
     cert_path, key_path = tls.files(tmp_path)
     cert = x509.load_pem_x509_certificate(open(cert_path, "rb").read())
     san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
-    assert "volvo.example.net" in san.get_values_for_type(x509.DNSName)
+    assert {"volvo.example.net"} <= set(san.get_values_for_type(x509.DNSName))
     assert "192.168.2.12" in [str(i) for i in san.get_values_for_type(x509.IPAddress)]
     assert cert.not_valid_after_utc - dt.datetime.now(dt.timezone.utc) <= dt.timedelta(days=398)
     assert (tmp_path / "tls" / "key.pem").stat().st_mode & 0o077 == 0
