@@ -7,6 +7,7 @@ which is why they sit behind one setting.
 import logging
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -140,11 +141,13 @@ def describe(event: dict[str, Any], settings: dict[str, Any]) -> tuple[str, str]
 
 async def send_webhook(url: str, title: str, message: str) -> None:
     text = f"{title}. {message}" if message else title
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
     try:
         async with httpx.AsyncClient(timeout=10) as http:
-            if "discord.com/api/webhooks" in url:
+            if (host == "discord.com" or host.endswith(".discord.com")) and parts.path.startswith("/api/webhooks/"):
                 await http.post(url, json={"content": text})
-            elif "hooks.slack.com" in url:
+            elif host == "hooks.slack.com":
                 await http.post(url, json={"text": text})
             else:
                 # Plain text with a Title header is what ntfy expects; most others accept it.
