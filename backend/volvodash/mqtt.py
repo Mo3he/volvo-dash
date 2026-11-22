@@ -49,6 +49,7 @@ SENSORS: list[tuple[str, str, str | None, str | None, str | None, str | None]] =
     ("distance_to_service", "Distance to service", "km", "distance", None, "mdi:wrench-clock"),
     ("activity", "Activity", None, None, None, "mdi:car-info"),
     ("last_reported", "Car last reported", None, "timestamp", None, None),
+    ("lock_last_updated", "Lock status updated", None, "timestamp", None, "mdi:lock-clock"),
     ("last_trip_distance", "Last trip distance", "km", "distance", None, "mdi:map-marker-path"),
     ("last_trip_energy", "Last trip energy", "kWh", "energy", None, None),
     ("last_trip_consumption", "Last trip consumption", "kWh/100km", None, None, "mdi:lightning-bolt"),
@@ -117,6 +118,7 @@ def state_payload(db: DB, collector: Collector) -> dict[str, Any]:
         k for k, v in state.items()
         if k.endswith("Warning") and v not in ("NO_WARNING", "UNSPECIFIED", None)
     )
+    lock_reading = db.one("SELECT fetched_at FROM state WHERE key = 'centralLock'")
     stamps = [t for t in (o.soc_ts, o.charge_ts, o.engine_ts, o.availability_ts,
                           o.odometer_ts, o.location_ts) if t]
     # While charging, the drive since the last charge is over: report zero.
@@ -137,6 +139,7 @@ def state_payload(db: DB, collector: Collector) -> dict[str, Any]:
         "distance_to_service": state.get("distanceToService"),
         "activity": collector.status.get("mode"),
         "last_reported": _iso(max(stamps)) if stamps else None,
+        "lock_last_updated": _iso(lock_reading["fetched_at"]) if lock_reading else None,
         "last_trip_distance": trip["distance_km"] if trip else None,
         "last_trip_energy": trip["energy_kwh"] if trip else None,
         "last_trip_consumption": trip["efficiency"] if trip else None,
@@ -206,7 +209,8 @@ def discovery(db: DB, prefix: str, discovery_prefix: str) -> dict[str, dict[str,
             cfg["icon"] = icon
         if key == "last_charge_cost":
             cfg["unit_of_measurement"] = get_settings(db)["currency"]
-        if key in ("api_calls_today", "activity", "last_reported", "sign_in_valid_until"):
+        if key in ("api_calls_today", "activity", "last_reported", "lock_last_updated",
+                   "sign_in_valid_until"):
             cfg["entity_category"] = "diagnostic"
         out[f"{discovery_prefix}/sensor/{dev}/{key}/config"] = cfg
 

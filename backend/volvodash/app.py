@@ -299,7 +299,8 @@ async def status() -> dict[str, Any]:
         },
         "obs": {k: getattr(c.obs, k) for k in OBS_FIELDS} if c.status["last_poll"] or c.obs.t else None,
         "state": {
-            r["key"]: {"value": json.loads(r["value"]), "unit": r["unit"], "ts": r["ts"]}
+            r["key"]: {"value": json.loads(r["value"]), "unit": r["unit"], "ts": r["ts"],
+                       "fetched_at": r["fetched_at"]}
             for r in db.q("SELECT * FROM state")
         },
         "trip": trip,

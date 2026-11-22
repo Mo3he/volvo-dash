@@ -47,6 +47,7 @@ export function Overview({ status: s }: { status: Status }) {
 
   const reported = carTime(o)
   const lock = s.state.centralLock?.value as string | undefined
+  const lockReadAt = s.state.centralLock?.fetched_at
   const remaining = s.charge && o.mins_to_target ? o.mins_to_target * 60 : null
 
   return (
@@ -76,7 +77,12 @@ export function Overview({ status: s }: { status: Status }) {
         <div className="hero-info">
           <div className="chips">
             <span className="chip"><Icon name="plug" />{s.charge ? 'Charging' : o.connection === 'CONNECTED' ? 'Plugged in' : 'Unplugged'}</span>
-            {lock && <span className="chip"><Icon name={lock === 'LOCKED' ? 'lock' : 'unlock'} />{lock === 'LOCKED' ? 'Locked' : 'Unlocked'}</span>}
+            {lock && (
+              <span className="chip">
+                <Icon name={lock === 'LOCKED' ? 'lock' : 'unlock'} />
+                {lock === 'LOCKED' ? 'Locked' : 'Unlocked'} · {ago(lockReadAt)}
+              </span>
+            )}
             {o.target_soc != null && <span className="chip"><Icon name="battery" />Limit {pct(o.target_soc)}</span>}
           </div>
           {s.charge ? (

@@ -26,4 +26,6 @@ def test_discovery_and_state_line_up(rig):
     assert "unlock" not in COMMANDS
     assert 0 <= state["battery_level"] <= 100
     assert state["odometer"] > 1000
+    assert state["lock_last_updated"]
+    assert configs[f"homeassistant/sensor/{dev}/lock_last_updated/config"]["device_class"] == "timestamp"
     assert location_payload(r.collector)["latitude"]

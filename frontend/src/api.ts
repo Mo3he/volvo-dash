@@ -168,7 +168,7 @@ export interface Status {
     mode: string
   }
   obs: Record<string, any> | null
-  state: Record<string, { value: any; unit: string | null; ts: number | null }>
+  state: Record<string, { value: any; unit: string | null; ts: number | null; fetched_at: number }>
   trip: Trip | null
   charge: Charge | null
   last_trip: Trip | null
