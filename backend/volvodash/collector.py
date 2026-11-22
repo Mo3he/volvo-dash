@@ -48,6 +48,8 @@ SLOW = {
 # Things that rarely change, kept in the raw log once a day.
 STATIC_INTERVAL_S = 86400
 ACTIVE_LINGER_S = 600
+DOORS_FAST_INTERVAL_S = 60
+DOORS_FAST_AFTER_TRIP_S = 600
 WAITING_INTERVAL_S = 120
 SOFT_BUDGET = 0.85
 HARD_BUDGET = 0.97
@@ -69,6 +71,7 @@ class Collector:
         self.obs = Obs(**dict(last)) if last else Obs()
         self.due: dict[str, float] = {}
         self.off: dict[str, float] = {}
+        self.doors_fast_until = float(db.get("doors_fast_until", 0) or 0)
         self.last_change = 0.0
         self.status: dict[str, Any] = {"last_poll": None, "last_error": None, "paused": False,
                                        "mode": "idle", "next_poll": None}
@@ -109,6 +112,9 @@ class Collector:
     async def _tick(self, force: bool) -> float:
         now = self.clock.now()
         settings = get_settings(self.db)
+        if self.doors_fast_until and now >= self.doors_fast_until:
+            self.doors_fast_until = 0
+            self.db.delete("doors_fast_until")
         if not self.client.connected():
             self.status["mode"] = "disconnected"
             return 30
@@ -130,7 +136,10 @@ class Collector:
         for res, (parked_s, active_s) in SLOW.items():
             if force or now >= self.due.get(res, 0):
                 wanted.add(res)
-                self.due[res] = now + (active_s if driving else parked_s)
+                interval = active_s if driving else parked_s
+                if res == "doors" and now < self.doors_fast_until:
+                    interval = DOORS_FAST_INTERVAL_S
+                self.due[res] = now + interval
         wanted = {r for r in wanted if now >= self.off.get(r, 0)}
 
         try:
@@ -165,6 +174,10 @@ class Collector:
         if not obs.same_data(self.obs):
             self.db.insert("observations", asdict(obs))
             events = self.detector.feed(obs)
+            if any(event["type"] == "trip_ended" for event in events):
+                self.doors_fast_until = now + DOORS_FAST_AFTER_TRIP_S
+                self.db.set("doors_fast_until", self.doors_fast_until)
+                self.due["doors"] = now + DOORS_FAST_INTERVAL_S
             self.last_change = now
             await self._notify(events, settings)
         self.obs = obs

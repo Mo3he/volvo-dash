@@ -42,8 +42,9 @@ Settings → **MQTT and Home Assistant**: enter your broker (for example the
 Mosquitto add-on in Home Assistant, with a Home Assistant user's login). The
 car then appears in Home Assistant by itself through MQTT discovery, as one
 device with battery, range, charging, odometer, lock/door/window state,
-last trip and charge, a map tracker, and buttons for lock, climate start/stop
-and "check now". Units are metric; Home Assistant converts to yours.
+lock-status update time, last trip and charge, a map tracker, and buttons for
+lock, climate start/stop and "check now". Units are metric; Home Assistant
+converts to yours.
 
 Topics, with `<id>` = `volvodash_` + the last six characters of the VIN:
 
@@ -136,9 +137,10 @@ from that:
 
 - **Adaptive polling.** Four cheap calls every 5 minutes while parked, every
   minute while driving or charging, every 2 minutes while plugged in and
-  waiting. Doors, tyres and warnings are on slow timers. A typical day uses
-  about 2,000 of Volvo's 10,000 daily calls; polling slows down at 85% and
-  stops at 97%.
+  waiting. Doors are checked every minute for 10 minutes after a trip ends,
+  then every 30 minutes while parked. Tyres and warnings are on slower timers.
+  A typical day uses about 2,000 of Volvo's 10,000 daily calls; polling slows
+  down at 85% and stops at 97%.
 - **A raw log first.** Every answer from Volvo's API is kept in
   `raw_responses` (compressed, and only when it differs from the previous
   answer for that endpoint: about 100 KB a day). Everything else is derived
