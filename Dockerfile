@@ -1,12 +1,12 @@
 # The web app is plain static files, so build it once on the native platform.
-FROM --platform=$BUILDPLATFORM node:22-alpine AS web
+FROM --platform=$BUILDPLATFORM node:26-alpine AS web
 WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.13-slim
+FROM python:3.15-slim
 LABEL org.opencontainers.image.description="Self-hosted trip and charging log for Volvo EVs"
 WORKDIR /app
 COPY backend/pyproject.toml ./
