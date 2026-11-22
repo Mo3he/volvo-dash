@@ -7,10 +7,13 @@ energy, cost and consumption.
 It uses Volvo's official developer API, with your own API application and your
 Volvo ID. No reverse-engineered libraries.
 
-> **Status:** early. Running against a real 2027 EX40 since October 2026:
-> connection, status, charging and MQTT work. Trip detection has so far only
-> been tested against the built-in simulator, which speaks the same JSON as
-> Volvo's API. See [First week with the real car](#first-week-with-the-real-car).
+> **Status:** early. Production has run against a real 2027 EX40 since October
+> 2026; connection, status, charging, MQTT and trip detection have all been
+> exercised with real-car data. Automated end-to-end tests use the built-in
+> simulator, which models the car's reporting patterns; they do not replace
+> continued real-car testing. The published image runs Python 3.15; Node 26 is
+> used only to build the frontend. See
+> [How a real EX40 reports](#how-a-real-ex40-reports).
 
 ## What it does
 
@@ -81,7 +84,7 @@ git clone https://github.com/Mo3he/volvo-dash.git && cd volvo-dash
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-From source (Python 3.11+ and Node 20+):
+From source (Python 3.11+ and Node 20.19+ or 22.13+):
 
 ```sh
 ./dev.sh sim    # simulated EX40 with a month of history, no account needed
