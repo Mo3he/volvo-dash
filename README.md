@@ -11,8 +11,7 @@ Volvo ID. No reverse-engineered libraries.
 > 2026; connection, status, charging, MQTT and trip detection have all been
 > exercised with real-car data. Automated end-to-end tests use the built-in
 > simulator, which models the car's reporting patterns; they do not replace
-> continued real-car testing. The published image runs Python 3.15; Node 26 is
-> used only to build the frontend. See
+> continued real-car testing. See
 > [How a real EX40 reports](#how-a-real-ex40-reports).
 
 ## What it does
